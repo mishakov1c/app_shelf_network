@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "apiVersion": 1,
+  "id": "appshelf.network",
+  "name": "Сеть",
+  "version": "1.0.0",
+  "entryPoint": "bin/NetworkPlugin.exe",
+  "description": "Сетевые проверки ICMP, HTTPS и TCP, диагностика DNS, прокси и маршрутов.",
+  "publisher": "AppShelf",
+  "capabilities": [
+    "command",
+    "window",
+    "settings",
+    "background",
+    "widget"
+  ]
+}

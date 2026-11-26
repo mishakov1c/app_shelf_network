@@ -1,0 +1,38 @@
+name: Build and test NetworkPlugin
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build standalone package
+        shell: powershell
+        run: ./Build.ps1
+      - name: Run standalone offline regression tests
+        shell: powershell
+        run: |
+          powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File tests/NetworkPlugin.Tests.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Network plugin regression failed' }
+      - name: Check out pinned host runtime for compatibility test
+        uses: actions/checkout@v5
+        with:
+          repository: mishakov1c/app_shelf
+          ref: 76fee373e94679c682a4d440076915338b872055
+          path: .test-host
+          persist-credentials: false
+      - name: Test actual installed plugin through host API
+        shell: powershell
+        run: |
+          powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File tests/NetworkRuntime.Tests.ps1 -HostSourceDirectory "$env:GITHUB_WORKSPACE/.test-host"
+          if ($LASTEXITCODE -ne 0) { throw 'Network runtime compatibility failed' }
+      - uses: actions/upload-artifact@v6
+        with:
+          name: NetworkPlugin-${{ github.sha }}
+          path: dist/NetworkPlugin-1.0.0.asplugin
+          if-no-files-found: error
+          retention-days: 14
