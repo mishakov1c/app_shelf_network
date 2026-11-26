@@ -159,7 +159,9 @@ namespace AppShelf.Network
     $parameters = New-Object CodeDom.Compiler.CompilerParameters
     $parameters.GenerateInMemory = $true
     $parameters.TreatWarningsAsErrors = $true
-    foreach ($ref in @('System.dll','System.Core.dll','System.Runtime.Serialization.dll','System.Xml.dll','WindowsBase.dll','PresentationCore.dll','PresentationFramework.dll','System.Xaml.dll')) {
+    $framework = [Runtime.InteropServices.RuntimeEnvironment]::GetRuntimeDirectory()
+    foreach ($ref in @('System.dll','System.Core.dll','System.Runtime.Serialization.dll','System.Xml.dll','System.Xaml.dll',
+        (Join-Path $framework 'WPF\WindowsBase.dll'),(Join-Path $framework 'WPF\PresentationCore.dll'),(Join-Path $framework 'WPF\PresentationFramework.dll'))) {
         [void]$parameters.ReferencedAssemblies.Add($ref)
     }
     $result = $provider.CompileAssemblyFromSource($parameters,[string[]]$sources)
