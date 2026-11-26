@@ -9,9 +9,10 @@ $provider = New-Object Microsoft.CSharp.CSharpCodeProvider
 try {
     $program = [IO.File]::ReadAllText((Join-Path $root 'NetworkPlugin.cs'))
     foreach ($index in @(1,2)) {
-        $anchor = "NetworkChecks.ProbeAsync(NetworkChecks.Resolve(captured,$index),$index)"
+        $slot = if ($index -eq 1) { "first" } else { "second" }
+        $anchor = "Task<string> $slot = NetworkChecks.ProbeAsync(NetworkChecks.Resolve(captured,$index),$index)"
         if ($program.Split(@($anchor), [StringSplitOptions]::None).Length -ne 2) { throw 'Monitor isolation boundary missing.' }
-        $program = $program.Replace($anchor, "NetworkMonitorTests.Probe(NetworkChecks.Resolve(captured,$index),$index)")
+        $program = $program.Replace($anchor, "Task<string> $slot = NetworkMonitorTests.Probe(NetworkChecks.Resolve(captured,$index),$index)")
     }
     $anchor = 'Task.Run(new Func<string>(NetworkProbes.RouteSummary))'
     if ($program.Split(@($anchor), [StringSplitOptions]::None).Length -ne 2) { throw 'Route isolation boundary missing.' }
