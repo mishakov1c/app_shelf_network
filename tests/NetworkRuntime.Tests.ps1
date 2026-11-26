@@ -52,6 +52,28 @@ public static class NetworkRuntimeTests
             Assert(second.ProcessId == pid, "Unnecessary child restart");
             runtime.SetEnabledAsync(id, false).GetAwaiter().GetResult();
             Assert(runtime.State(id).Status == "idle", "Disable did not stop monitor");
+            string original = File.ReadAllText(settings);
+            string unlisted = Path.Combine(data, "unlisted.txt");
+            File.WriteAllText(unlisted, "not for backup");
+            Assert(!store.BackupDataEnabled(id), "Plugin backup consent granted automatically");
+            store.SetBackupDataEnabled(id, true);
+            byte[] backup = store.CaptureBackup();
+            Assert(backup != null, "No plugin backup");
+            File.WriteAllBytes(store.RecoveredPath(), backup);
+            PluginBackupItem saved = store.ReadRecovered().Find(delegate(PluginBackupItem item) { return item.Id == id; });
+            Assert(saved != null && saved.DataIncluded && saved.Files.Count == 1 &&
+                saved.Files[0].Path == "network-settings.json", "Incorrect backup allowlist");
+            string changed = "{\"showNetwork\":false,\"networkCheck1Mode\":\"icmp\",\"networkCheck1Target\":\"127.0.0.1\"}";
+            File.WriteAllText(settings, changed);
+            string safety = Path.Combine(folder, "safety");
+            runtime.RestoreDataAsync(id, version, safety).GetAwaiter().GetResult();
+            Assert(File.ReadAllText(settings) == original, "Network settings were not restored");
+            Assert(!store.List()[0].Enabled && File.ReadAllText(unlisted) == "not for backup",
+                "Restore enabled plugin or touched unlisted data");
+            string[] previous = Directory.GetFiles(safety, "network-settings.json", SearchOption.AllDirectories);
+            Assert(previous.Length == 1 && File.ReadAllText(previous[0]) == changed, "Pre-restore safety copy missing");
+            Console.WriteLine("PASS: explicit backup consent, allowlisted data, disabled restore and safety copy");
+
         }
         try { using (Process child = Process.GetProcessById(pid)) Assert(child.WaitForExit(3000), "Child still running"); }
         catch (ArgumentException) {}

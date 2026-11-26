@@ -5,7 +5,7 @@ Independent network diagnostics plugin for [AppShelf](https://github.com/mishako
 - Two configurable checks: default ICMP + HTTPS with TCP fallback, ICMP, HTTPS, TCP.
 - Eight-second background monitoring, three optional bottom-panel indicators.
 - Manual DNS/HTTPS diagnostics, Windows route, active adapters and proxy report.
-- Separate settings in the host-provided plugin data directory; no writes to Windows network settings.
+- Separate settings in the host-provided plugin data directory; `network-settings.json` is the only file allowed for AppShelf backups, after explicit user consent. No writes to Windows network settings.
 - Happ recovery is not included.
 
 ## Build
