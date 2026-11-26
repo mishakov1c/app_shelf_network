@@ -22,10 +22,11 @@ Output: `dist/NetworkPlugin-1.0.0.asplugin`. The build uses the local API v1 pro
 
 ```powershell
 powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File tests/NetworkPlugin.Tests.ps1
+powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File tests/NetworkMonitor.Tests.ps1
 powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File tests/NetworkRuntime.Tests.ps1 -HostSourceDirectory C:\path\to\app_shelf
 ```
 
-The second test deliberately compiles the real host runtime from a supplied checkout. CI checks out the exact tested upstream revision `76fee373e94679c682a4d440076915338b872055` solely for that compatibility test; build and independent unit tests do not depend on the host repository. Tests use temporary profiles with monitoring off, not the user's Windows network settings.
+The runtime test deliberately compiles the real host runtime from a supplied checkout. CI checks out the exact tested upstream revision `76fee373e94679c682a4d440076915338b872055` solely for that compatibility test; build and independent unit tests do not depend on the host repository. Tests use temporary profiles with monitoring off, not the user's Windows network settings.
 
 ## Installation
 

@@ -18,6 +18,11 @@ jobs:
         run: |
           powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File tests/NetworkPlugin.Tests.ps1
           if ($LASTEXITCODE -ne 0) { throw 'Network plugin regression failed' }
+      - name: Test monitor generation and settings UI without network traffic
+        shell: powershell
+        run: |
+          powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File tests/NetworkMonitor.Tests.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Network monitor regression failed' }
       - name: Check out pinned host runtime for compatibility test
         uses: actions/checkout@v5
         with:
