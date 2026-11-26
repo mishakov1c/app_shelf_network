@@ -35,3 +35,7 @@ Requires a compatible AppShelf build with plugin API v1. Install the package in 
 ## Provenance and status
 
 Extracted from AppShelf commit [`76fee373`](https://github.com/mishakov1c/app_shelf/commit/76fee373e94679c682a4d440076915338b872055). The network implementation and manifest are unchanged; only paths, standalone build, test wiring and documentation are adapted. The upstream GPL-3.0 license is retained. The initial package is a development build, not a published release.
+
+## Releases
+
+Normal pushes only build, test and upload CI artifacts. For an explicitly approved preview, a commit on `main` with exact subject `release-preview: NetworkPlugin X.Y.Z` triggers a separate publication job only after all build, monitor, UI and runtime/backup tests succeed. The manifest and executable versions must match. The tag is `vX.Y.Z`, flagged as a prerelease; the package is published independently of AppShelf. No release is published by ordinary development commits. A later stable release should use a tested package and follow the project's acceptance process.
