@@ -1,5 +1,7 @@
 # NetworkPlugin for AppShelf
 
+Development plan: [ROADMAP.md](ROADMAP.md).
+
 Independent network diagnostics plugin for [AppShelf](https://github.com/mishakov1c/app_shelf), using plugin API v1.
 
 - Two configurable checks: default ICMP + HTTPS with TCP fallback, ICMP, HTTPS, TCP.
