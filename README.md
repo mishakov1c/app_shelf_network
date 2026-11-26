@@ -10,6 +10,8 @@ Independent network diagnostics plugin for [AppShelf](https://github.com/mishako
 
 ## Build
 
+Double-click `Build-Plugin.cmd` in the repository root to build the `.asplugin` package and open the `dist` folder. It does not install or start the plugin. For unattended builds, run `Build-Plugin.cmd --no-open --no-pause`; the compiler exit status is propagated.
+
 On Windows with .NET Framework 4.8, run in Windows PowerShell 5.1:
 
 ```powershell

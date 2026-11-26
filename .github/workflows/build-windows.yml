@@ -11,8 +11,8 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Build standalone package
-        shell: powershell
-        run: ./Build.ps1
+        shell: cmd
+        run: call Build-Plugin.cmd --no-open --no-pause
       - name: Run standalone offline regression tests
         shell: powershell
         run: |
