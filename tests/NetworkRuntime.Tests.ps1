@@ -8,7 +8,7 @@ $temp = Join-Path $env:LOCALAPPDATA ('Temp\AppShelf-NetworkRuntime-' + [guid]::N
 $provider = New-Object Microsoft.CSharp.CSharpCodeProvider
 try {
     & (Join-Path $root 'Build.ps1') -OutputDirectory $temp
-    $package = Join-Path $temp 'NetworkPlugin-1.0.0.asplugin'
+    $package = Join-Path $temp 'NetworkPlugin-1.1.0.asplugin'
     if (-not (Test-Path -LiteralPath $package)) { throw 'Network package missing.' }
     $harness = @'
 using System;
@@ -24,7 +24,7 @@ public static class NetworkRuntimeTests
     public static void Run(string folder, string package)
     {
         const string id = "appshelf.network";
-        const string version = "1.0.0";
+        const string version = "1.1.0";
         PluginPackageStore store = new PluginPackageStore(folder);
         store.Install(package, delegate { return true; });
         Assert(!store.List()[0].Enabled, "Network plugin installed enabled");

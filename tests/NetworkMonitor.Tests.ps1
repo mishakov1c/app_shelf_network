@@ -1,4 +1,4 @@
-﻿# Deterministic WinForms STA test of the real monitor and settings/report UI.
+﻿# Deterministic WPF STA test of the real monitor and settings/report UI.
 # Substitute only the network I/O boundaries; never send live packets.
 $ErrorActionPreference = 'Stop'
 if ($PSVersionTable.PSEdition -eq 'Core' -or [Threading.Thread]::CurrentThread.ApartmentState -ne 'STA') { throw 'Use Windows PowerShell 5.1 -STA.' }
@@ -17,9 +17,9 @@ try {
     $anchor = 'Task.Run(new Func<string>(NetworkProbes.RouteSummary))'
     if ($program.Split(@($anchor), [StringSplitOptions]::None).Length -ne 2) { throw 'Route isolation boundary missing.' }
     $program = $program.Replace($anchor, 'Task.FromResult("Маршрут: fixture")')
-    $anchor = 'ApplyDarkTheme(form); form.Show(); RefreshReport();'
+    $anchor = 'form.Show(); RefreshReport();'
     if ($program.Split(@($anchor), [StringSplitOptions]::None).Length -ne 2) { throw 'Report isolation boundary missing.' }
-    $program = $program.Replace($anchor, 'ApplyDarkTheme(form); form.Show();')
+    $program = $program.Replace($anchor, 'form.Show();')
     $harness = @'
 using System;
 using System.Collections.Generic;
@@ -27,7 +27,9 @@ using System.Diagnostics;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Windows.Forms;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Threading;
 using AppShelf;
 
 namespace AppShelf.Network
@@ -63,20 +65,33 @@ namespace AppShelf.Network
         {
             Stopwatch watch = Stopwatch.StartNew();
             while (!ready() && watch.ElapsedMilliseconds < 3000)
-            { Application.DoEvents(); Thread.Sleep(5); }
+            { Dispatcher.CurrentDispatcher.Invoke(DispatcherPriority.Background, new Action(delegate { })); Thread.Sleep(5); }
             Assert(ready(), failure);
         }
 
         private static string FirstResult()
         { return ((PluginWidget[])Call("Snapshot"))[0].Elements[0].Label; }
 
+        private static T Find<T>(DependencyObject root, string tag) where T : FrameworkElement
+        {
+            T match = root as T;
+            if (match != null && Object.Equals(match.Tag, tag)) return match;
+            foreach (object child in LogicalTreeHelper.GetChildren(root))
+            {
+                DependencyObject node = child as DependencyObject;
+                if (node == null) continue;
+                T found = Find<T>(node, tag);
+                if (found != null) return found;
+            }
+            return null;
+        }
+
         public static void Run(string folder)
         {
-            using (Control dispatcher = new Control())
-            using (System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer { Interval = 60000 })
             {
-                IntPtr handle = dispatcher.Handle;
-                SynchronizationContext.SetSynchronizationContext(new WindowsFormsSynchronizationContext());
+                Dispatcher dispatcher = Dispatcher.CurrentDispatcher;
+                DispatcherTimer timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(60) };
+                SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(dispatcher));
                 NetworkSettings old = new NetworkSettings { ShowNetwork = true, NetworkCheck1Mode = "https",
                     NetworkCheck1Target = "https://old.example/path", NetworkCheck2Mode = "icmp", NetworkCheck2Target = "127.0.0.2" };
                 Set("dataDirectory", folder);
@@ -99,35 +114,36 @@ namespace AppShelf.Network
                 Set("settings", next); Set("generation", 2); Call("ResetResults"); Call("UpdateMonitor");
                 First[2].SetResult("stale after disable"); Second[2].SetResult("stale2");
                 WaitFor(delegate { return !(bool)Get("pending"); }, "Disabled probes did not finish");
-                Assert(!timer.Enabled && First.Count == 3 && FirstResult() == "Выключено", "Disabled monitor published or restarted");
+                Assert(!timer.IsEnabled && First.Count == 3 && FirstResult() == "Выключено", "Disabled monitor published or restarted");
                 Console.WriteLine("PASS: overlapping requests, stale results, replacement targets and disabled monitoring");
 
                 try
                 {
                     Call("OpenReport");
-                    Form report = (Form)Get("reportWindow");
+                    Window report = (Window)Get("reportWindow");
                     TextBox box = (TextBox)Get("reportBox");
-                    Assert(report != null && box != null && box.ReadOnly && box.Multiline && !box.WordWrap &&
-                        box.ScrollBars == ScrollBars.Both, "Report missing read-only two-axis scrolling");
+                    Assert(report != null && box != null && box.IsReadOnly && box.TextWrapping == TextWrapping.NoWrap &&
+                        box.VerticalScrollBarVisibility == ScrollBarVisibility.Auto && box.HorizontalScrollBarVisibility == ScrollBarVisibility.Auto, "Report missing read-only two-axis scrolling");
                     Call("OpenReport"); Assert(Object.ReferenceEquals(report, Get("reportWindow")), "Duplicate report window");
                     Call("OpenSettings");
-                    Form settings = (Form)Get("settingsWindow");
-                    TableLayoutPanel layout = (TableLayoutPanel)settings.Controls[0];
-                    CheckBox enabled = (CheckBox)layout.GetControlFromPosition(0,0);
-                    ComboBox mode = (ComboBox)layout.GetControlFromPosition(1,1);
-                    TextBox address = (TextBox)layout.GetControlFromPosition(1,2);
-                    Assert(!enabled.Checked && mode.SelectedIndex == 3 && address.Text == "localhost:443", "Settings did not load");
+                    Window settings = (Window)Get("settingsWindow");
+                    CheckBox enabled = Find<CheckBox>(settings, "enabled");
+                    ComboBox mode = Find<ComboBox>(settings, "mode1");
+                    TextBox address = Find<TextBox>(settings, "target1");
+                    Assert(enabled != null && mode != null && address != null && enabled.IsChecked == false && mode.SelectedIndex == 3 && address.Text == "localhost:443", "Settings did not load");
+                    Call("OpenSettings"); Assert(Object.ReferenceEquals(settings, Get("settingsWindow")), "Duplicate settings window");
+                    mode.ApplyTemplate(); Assert(mode.Template.FindName("PART_Popup", mode) != null && settings.Resources.MergedDictionaries.Count >= 2, "Dark combo style missing");
                     address.Text = "127.0.0.1:8443";
-                    ((Button)layout.GetControlFromPosition(1,5)).PerformClick();
+                    Find<Button>(settings, "save").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                     NetworkSettings saved = NetworkSettings.Load(folder);
                     Assert(!saved.ShowNetwork && saved.NetworkCheck1Target == "127.0.0.1:8443", "UI save did not persist target");
-                    Assert(First.Count == 3 && !timer.Enabled, "Settings UI enabled traffic unexpectedly");
+                    Assert(First.Count == 3 && !timer.IsEnabled, "Settings UI enabled traffic unexpectedly");
                     Console.WriteLine("PASS: report composition, singleton windows and real settings save");
                 }
                 finally
                 {
-                    Form form = (Form)Get("settingsWindow"); if (form != null && !form.IsDisposed) form.Close();
-                    form = (Form)Get("reportWindow"); if (form != null && !form.IsDisposed) form.Close();
+                    Window form = (Window)Get("settingsWindow"); if (form != null) form.Close();
+                    form = (Window)Get("reportWindow"); if (form != null) form.Close();
                     timer.Stop(); Set("monitor", null);
                 }
             }
@@ -138,11 +154,12 @@ namespace AppShelf.Network
     $sources = @(
         [IO.File]::ReadAllText((Join-Path $root 'PluginProtocol.cs')),
         [IO.File]::ReadAllText((Join-Path $root 'NetworkChecks.cs')),
+        [IO.File]::ReadAllText((Join-Path $root 'PluginTheme.cs')),
         $program, $harness)
     $parameters = New-Object CodeDom.Compiler.CompilerParameters
     $parameters.GenerateInMemory = $true
     $parameters.TreatWarningsAsErrors = $true
-    foreach ($ref in @('System.dll','System.Core.dll','System.Runtime.Serialization.dll','System.Xml.dll','System.Windows.Forms.dll','System.Drawing.dll')) {
+    foreach ($ref in @('System.dll','System.Core.dll','System.Runtime.Serialization.dll','System.Xml.dll','WindowsBase.dll','PresentationCore.dll','PresentationFramework.dll','System.Xaml.dll')) {
         [void]$parameters.ReferencedAssemblies.Add($ref)
     }
     $result = $provider.CompileAssemblyFromSource($parameters,[string[]]$sources)

@@ -6,7 +6,7 @@ $temp = Join-Path ([IO.Path]::GetTempPath()) ('AppShelf-NetworkTests-' + [Guid]:
 [void][IO.Directory]::CreateDirectory($temp)
 try {
     & (Join-Path $root 'Build.ps1') -OutputDirectory $temp
-    $package = Join-Path $temp 'NetworkPlugin-1.0.0.asplugin'
+    $package = Join-Path $temp 'NetworkPlugin-1.1.0.asplugin'
     [IO.Compression.ZipFile]::ExtractToDirectory($package,(Join-Path $temp 'unpacked'))
     $exe = Join-Path $temp 'unpacked\bin\NetworkPlugin.exe'
     $assembly = [Reflection.Assembly]::LoadFrom($exe)

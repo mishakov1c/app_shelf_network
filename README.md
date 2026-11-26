@@ -20,7 +20,7 @@ On Windows with .NET Framework 4.8, run in Windows PowerShell 5.1:
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File Build.ps1
 ```
 
-Output: `dist/NetworkPlugin-1.0.0.asplugin`. The build uses the local API v1 protocol source and does not require AppShelf.exe, a host source checkout or internet access.
+Output: `dist/NetworkPlugin-1.1.0.asplugin`. The build uses the local API v1 protocol source and does not require AppShelf.exe, a host source checkout or internet access.
 
 ## Tests
 
@@ -38,7 +38,7 @@ Requires a compatible AppShelf build with plugin API v1. Install the package in 
 
 ## Provenance and status
 
-Extracted from AppShelf commit [`76fee373`](https://github.com/mishakov1c/app_shelf/commit/76fee373e94679c682a4d440076915338b872055). The network implementation and manifest are unchanged; only paths, standalone build, test wiring and documentation are adapted. The upstream GPL-3.0 license is retained. The initial package is a development build, not a published release.
+Extracted from AppShelf commit [`76fee373`](https://github.com/mishakov1c/app_shelf/commit/76fee373e94679c682a4d440076915338b872055). The 1.1.0 candidate migrates the diagnostic and settings windows to standalone WPF with AppShelf styling; network probes and storage are unchanged. The upstream GPL-3.0 license is retained. Version 1.0.0 Preview was published independently; the 1.1.0 candidate awaits acceptance.
 
 ## Releases
 
