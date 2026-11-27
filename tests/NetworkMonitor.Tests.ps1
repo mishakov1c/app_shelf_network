@@ -127,6 +127,8 @@ namespace AppShelf.Network
                     Call("OpenReport"); Assert(Object.ReferenceEquals(report, Get("reportWindow")), "Duplicate report window");
                     Call("OpenSettings");
                     Window settings = (Window)Get("settingsWindow");
+                    Assert(report.Icon != null && report.Icon.IsFrozen &&
+                        Object.ReferenceEquals(report.Icon, settings.Icon), "Both WPF windows must share the embedded frozen icon");
                     CheckBox enabled = Find<CheckBox>(settings, "enabled");
                     ComboBox mode = Find<ComboBox>(settings, "mode1");
                     TextBox address = Find<TextBox>(settings, "target1");
@@ -159,6 +161,8 @@ namespace AppShelf.Network
     $parameters = New-Object CodeDom.Compiler.CompilerParameters
     $parameters.GenerateInMemory = $true
     $parameters.TreatWarningsAsErrors = $true
+    $icon = Join-Path $root 'Assets\NetworkPlugin.ico'
+    $parameters.CompilerOptions = '/resource:"' + $icon + '",AppShelf.Network.Icon.ico'
     $framework = [Runtime.InteropServices.RuntimeEnvironment]::GetRuntimeDirectory()
     foreach ($ref in @('System.dll','System.Core.dll','System.Runtime.Serialization.dll','System.Xml.dll','System.Xaml.dll',
         (Join-Path $framework 'WPF\WindowsBase.dll'),(Join-Path $framework 'WPF\PresentationCore.dll'),(Join-Path $framework 'WPF\PresentationFramework.dll'))) {

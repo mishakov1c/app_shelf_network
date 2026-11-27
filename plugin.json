@@ -3,7 +3,7 @@
   "apiVersion": 1,
   "id": "appshelf.network",
   "name": "Сеть",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "update": {
     "provider": "github",
     "repository": "mishakov1c/app_shelf_network"

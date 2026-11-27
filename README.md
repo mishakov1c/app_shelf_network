@@ -20,7 +20,15 @@ On Windows with .NET Framework 4.8, run in Windows PowerShell 5.1:
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File Build.ps1
 ```
 
-Output: `dist/NetworkPlugin-1.0.2.asplugin`. The build uses the local API v1 protocol source and does not require AppShelf.exe, a host source checkout or internet access.
+Output: `dist/NetworkPlugin-1.0.3.asplugin`. The build uses the local API v1 protocol source and does not require AppShelf.exe, a host source checkout or internet access.
+
+### Official icon
+
+`Assets/NetworkPlugin.Source.png` is the approved original image, preserved unchanged.
+`Assets/NetworkPlugin.png` removes transparent margins and detached export speckles while preserving the main artwork and its proportions.
+`Assets/NetworkPlugin.ico` contains 32-bit frames at 16, 20, 24, 32, 48, 64, 128 and 256 pixels.
+Regenerate both derived files with `powershell.exe -NoProfile -ExecutionPolicy Bypass -File Assets/Build-Icon.ps1`.
+The ICO is embedded both as the Windows EXE icon and as a managed resource shared by the diagnostics and settings WPF windows; no external image files are required at runtime.
 
 ## Tests
 
@@ -28,7 +36,14 @@ Output: `dist/NetworkPlugin-1.0.2.asplugin`. The build uses the local API v1 pro
 powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File tests/NetworkPlugin.Tests.ps1
 powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File tests/NetworkMonitor.Tests.ps1
 powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File tests/NetworkRuntime.Tests.ps1 -HostSourceDirectory C:\path\to\app_shelf
+powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File tests/NetworkIcon.Tests.ps1
 ```
+
+The icon test reads the already built package, validates all ICO frames and the embedded resource,
+extracts Explorer Shell icons, and checks both real EXE windows' native icons.
+It uses an isolated profile with background monitoring disabled and diagnostic targets limited to `127.0.0.1:9`.
+Evidence is written outside the repository. Optional `-CaptureDesktop` also captures the taskbar and Alt+Tab;
+it briefly sends Alt+Tab and should only be used during an interactive acceptance session.
 
 The runtime test deliberately compiles the real host runtime from a supplied checkout. CI checks out AppShelf 2.24.3 revision `c8edc77b5a9706e9b2f7a35a0c9a9deb2b4e3c46` solely for that compatibility test; build and independent unit tests do not depend on the host repository. Tests use temporary profiles with monitoring off, not the user's Windows network settings.
 

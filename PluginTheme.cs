@@ -8,13 +8,26 @@ using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Markup;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 namespace AppShelf {
  internal static class PluginTheme {
+  private static BitmapFrame windowIcon;
+  private static BitmapFrame WindowIcon() {
+   if(windowIcon == null) {
+    using(var stream=typeof(PluginTheme).Assembly.GetManifestResourceStream("AppShelf.Network.Icon.ico")) {
+     if(stream == null) throw new InvalidOperationException("The embedded NetworkPlugin icon is missing.");
+     windowIcon=BitmapFrame.Create(stream,BitmapCreateOptions.PreservePixelFormat,BitmapCacheOption.OnLoad);
+     windowIcon.Freeze();
+    }
+   }
+   return windowIcon;
+  }
  internal static readonly Brush Background = Brush("#0E1420"), Surface = Brush("#192334"), SurfaceRaised = Brush("#222E43"), SurfaceHover = Brush("#30415C"), BorderColor = Brush("#34445B"), Foreground = Brush("#F4F7FD"), Secondary = Brush("#AABAD0"), Accent = Brush("#88B8FF");
  private static Brush Brush(string color) { var brush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(color)); brush.Freeze(); return brush; }
  [DllImport("dwmapi.dll", PreserveSig=true)] private static extern int DwmSetWindowAttribute(IntPtr hwnd,int attribute,ref int value,int size);
  internal static void Prepare(Window window) {
   window.Background=Background; window.Foreground=Foreground; window.FontFamily=new FontFamily("Segoe UI"); window.FontSize=13;
+  window.Icon=WindowIcon();
   window.Resources.MergedDictionaries.Add(SettingsScrollResources()); window.Resources.MergedDictionaries.Add(SelectionResources());
   window.Resources[SystemColors.ControlBrushKey]=Brush("#151D2C"); window.Resources[typeof(Button)]=ButtonStyle(); window.Resources[typeof(TextBox)]=TextBoxStyle(); window.Resources[typeof(CheckBox)]=CheckBoxStyle();
   window.SourceInitialized += delegate { try { var hwnd=new System.Windows.Interop.WindowInteropHelper(window).Handle; int enabled=1; if(DwmSetWindowAttribute(hwnd,20,ref enabled,4)!=0) DwmSetWindowAttribute(hwnd,19,ref enabled,4); } catch(DllNotFoundException) {} catch(EntryPointNotFoundException) {} };

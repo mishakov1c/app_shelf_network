@@ -18,7 +18,9 @@ $stage = Join-Path ([IO.Path]::GetTempPath()) ('AppShelf-Network-' + [guid]::New
 try {
     [void][IO.Directory]::CreateDirectory((Join-Path $stage 'bin'))
     $exe = Join-Path $stage 'bin\NetworkPlugin.exe'
-    & $csc /nologo /codepage:65001 /target:winexe /platform:anycpu /optimize+ "/out:$exe" /reference:System.dll /reference:System.Core.dll /reference:System.Xml.dll /reference:System.Runtime.Serialization.dll "/reference:$framework\WPF\WindowsBase.dll" "/reference:$framework\WPF\PresentationCore.dll" "/reference:$framework\WPF\PresentationFramework.dll" /reference:System.Xaml.dll (Join-Path $root 'PluginProtocol.cs') (Join-Path $PSScriptRoot 'NetworkPlugin.cs') (Join-Path $PSScriptRoot 'NetworkChecks.cs') (Join-Path $PSScriptRoot 'PluginTheme.cs')
+    $icon = Join-Path $root 'Assets\NetworkPlugin.ico'
+    if (-not (Test-Path -LiteralPath $icon)) { throw 'NetworkPlugin icon is missing.' }
+    & $csc /nologo /codepage:65001 /target:winexe /platform:anycpu /optimize+ "/out:$exe" "/win32icon:$icon" "/resource:$icon,AppShelf.Network.Icon.ico" /reference:System.dll /reference:System.Core.dll /reference:System.Xml.dll /reference:System.Runtime.Serialization.dll "/reference:$framework\WPF\WindowsBase.dll" "/reference:$framework\WPF\PresentationCore.dll" "/reference:$framework\WPF\PresentationFramework.dll" /reference:System.Xaml.dll (Join-Path $root 'PluginProtocol.cs') (Join-Path $PSScriptRoot 'NetworkPlugin.cs') (Join-Path $PSScriptRoot 'NetworkChecks.cs') (Join-Path $PSScriptRoot 'PluginTheme.cs')
     if ($LASTEXITCODE -ne 0) { throw 'Network plugin compilation failed.' }
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'plugin.json') -Destination $stage
     $output = [IO.Path]::GetFullPath($OutputDirectory)
