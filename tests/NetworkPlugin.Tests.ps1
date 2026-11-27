@@ -6,8 +6,13 @@ $temp = Join-Path ([IO.Path]::GetTempPath()) ('AppShelf-NetworkTests-' + [Guid]:
 [void][IO.Directory]::CreateDirectory($temp)
 try {
     & (Join-Path $root 'Build.ps1') -OutputDirectory $temp
-    $package = Join-Path $temp 'NetworkPlugin-1.0.0.asplugin'
+    $manifest = Get-Content -LiteralPath (Join-Path $root 'plugin.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+    $version = [string]$manifest.version
+    $package = Join-Path $temp ('NetworkPlugin-' + $version + '.asplugin')
     [IO.Compression.ZipFile]::ExtractToDirectory($package,(Join-Path $temp 'unpacked'))
+    $packagedManifest = Get-Content -LiteralPath (Join-Path $temp 'unpacked\plugin.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ($packagedManifest.version -ne $version -or $packagedManifest.update.provider -cne 'github' -or $packagedManifest.update.repository -cne 'mishakov1c/app_shelf_network') { throw 'Packaged version or GitHub update source mismatch.' }
+    Write-Host 'PASS: packaged manifest version and GitHub update source'
     $exe = Join-Path $temp 'unpacked\bin\NetworkPlugin.exe'
     $assembly = [Reflection.Assembly]::LoadFrom($exe)
     $targetType = $assembly.GetType('AppShelf.Network.NetworkChecks',$true)

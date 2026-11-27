@@ -8,7 +8,9 @@ $temp = Join-Path $env:LOCALAPPDATA ('Temp\AppShelf-NetworkRuntime-' + [guid]::N
 $provider = New-Object Microsoft.CSharp.CSharpCodeProvider
 try {
     & (Join-Path $root 'Build.ps1') -OutputDirectory $temp
-    $package = Join-Path $temp 'NetworkPlugin-1.0.0.asplugin'
+    $manifest = Get-Content -LiteralPath (Join-Path $root 'plugin.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+    $version = [string]$manifest.version
+    $package = Join-Path $temp ('NetworkPlugin-' + $version + '.asplugin')
     if (-not (Test-Path -LiteralPath $package)) { throw 'Network package missing.' }
     $harness = @'
 using System;
@@ -21,10 +23,9 @@ public static class NetworkRuntimeTests
     private static void Assert(bool value, string message)
     { if (!value) throw new Exception(message); }
 
-    public static void Run(string folder, string package)
+    public static void Run(string folder, string package, string version)
     {
         const string id = "appshelf.network";
-        const string version = "1.0.0";
         PluginPackageStore store = new PluginPackageStore(folder);
         store.Install(package, delegate { return true; });
         Assert(!store.List()[0].Enabled, "Network plugin installed enabled");
@@ -96,7 +97,7 @@ public static class NetworkRuntimeTests
     }
     $result = $provider.CompileAssemblyFromSource($parameters,[string[]]$sources)
     if ($result.Errors.Count) { throw ($result.Errors | Out-String) }
-    $result.CompiledAssembly.GetType('NetworkRuntimeTests').GetMethod('Run').Invoke($null,[object[]]@([string]$temp,[string]$package))
+    $result.CompiledAssembly.GetType('NetworkRuntimeTests').GetMethod('Run').Invoke($null,[object[]]@([string]$temp,[string]$package,[string]$version))
 } finally {
     $provider.Dispose()
     if (Test-Path -LiteralPath $temp) { Remove-Item -LiteralPath $temp -Recurse -Force }

@@ -20,7 +20,7 @@ On Windows with .NET Framework 4.8, run in Windows PowerShell 5.1:
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File Build.ps1
 ```
 
-Output: `dist/NetworkPlugin-1.0.0.asplugin`. The build uses the local API v1 protocol source and does not require AppShelf.exe, a host source checkout or internet access.
+Output: `dist/NetworkPlugin-1.0.1.asplugin`. The build uses the local API v1 protocol source and does not require AppShelf.exe, a host source checkout or internet access.
 
 ## Tests
 
@@ -43,3 +43,5 @@ Extracted from AppShelf commit [`76fee373`](https://github.com/mishakov1c/app_sh
 ## Releases
 
 Normal pushes only build, test and upload CI artifacts. For an explicitly approved preview, a commit on `main` with exact subject `release-preview: NetworkPlugin X.Y.Z` triggers a separate publication job only after all build, monitor, UI and runtime/backup tests succeed. The manifest and executable versions must match. The tag is `vX.Y.Z`, flagged as a prerelease; the package is published independently of AppShelf. No release is published by ordinary development commits. A later stable release should use a tested package and follow the project's acceptance process.
+
+Version 1.0.1 adds the public GitHub Releases update source. Install it manually over 1.0.0; subsequent newer previews can be checked in the AppShelf plugin manager. This release does not change network monitoring or settings.

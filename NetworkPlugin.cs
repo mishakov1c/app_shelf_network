@@ -14,7 +14,7 @@ namespace AppShelf.Network
     internal static class NetworkPlugin
     {
         private const string Id = "appshelf.network";
-        private const string Version = "1.0.0";
+        private const string Version = "1.0.1";
         private static Control dispatcher;
         private static Form reportWindow, settingsWindow;
         private static TextBox reportBox;
