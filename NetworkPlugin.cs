@@ -2,8 +2,9 @@ using System;
 using System.IO;
 using System.Text;
 using System.Threading;
-using System.Windows.Forms;
-using System.Drawing;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Threading;
 using System.Net;
 using System.Threading.Tasks;
 using System.Collections.Generic;
@@ -14,14 +15,14 @@ namespace AppShelf.Network
     internal static class NetworkPlugin
     {
         private const string Id = "appshelf.network";
-        private const string Version = "1.0.1";
-        private static Control dispatcher;
-        private static Form reportWindow, settingsWindow;
+        private const string Version = "1.0.2";
+        private static Dispatcher dispatcher;
+        private static Window reportWindow, settingsWindow;
         private static TextBox reportBox;
         private static Button refreshButton;
         private static string dataDirectory;
         private static NetworkSettings settings;
-        private static System.Windows.Forms.Timer monitor;
+        private static DispatcherTimer monitor;
         private static bool backgroundStarted, pending, reportPending;
         private static int generation, exitCode;
         private static string firstResult, secondResult, routeResult;
@@ -36,19 +37,12 @@ namespace AppShelf.Network
                 ServicePointManager.SecurityProtocol = (SecurityProtocolType)0;
             }
             catch (NotSupportedException) { }
-            Application.EnableVisualStyles();
-            Application.SetCompatibleTextRenderingDefault(false);
-            using (dispatcher = new Control())
-            {
-                // Create the handle on the STA before the protocol worker starts.
-                IntPtr handle = dispatcher.Handle;
-                Thread worker = new Thread(RunProtocol);
-                worker.IsBackground = true;
-                worker.Start();
-                Application.Run();
-                // The normal exit is requested only after the final frame is flushed.
-                worker.Join(1000);
-            }
+            Application app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+            dispatcher = Dispatcher.CurrentDispatcher;
+            Thread worker = new Thread(RunProtocol) { IsBackground = true };
+            worker.Start();
+            app.Run();
+            worker.Join(1000);
             return exitCode;
         }
 
@@ -71,7 +65,7 @@ namespace AppShelf.Network
                         PluginResponse reply = new PluginResponse { ApiVersion = 1, Id = request.Id, Ok = true };
                         try
                         {
-                            dispatcher.Invoke((MethodInvoker)delegate { Handle(request, reply); });
+                            dispatcher.Invoke(new Action(delegate { Handle(request, reply); }));
                         }
                         catch (Exception)
                         {
@@ -91,7 +85,7 @@ namespace AppShelf.Network
             catch (Exception) { exitCode = 1; }
             finally
             {
-                try { dispatcher.BeginInvoke((MethodInvoker)delegate { Application.ExitThread(); }); }
+                try { dispatcher.BeginInvoke(new Action(delegate { Application.Current.Shutdown(); })); }
                 catch (InvalidOperationException) { }
             }
         }
@@ -119,14 +113,14 @@ namespace AppShelf.Network
                 case "startBackground":
                     if (backgroundStarted) throw new InvalidOperationException();
                     backgroundStarted = true;
-                    monitor = new System.Windows.Forms.Timer { Interval = 8000 };
+                    monitor = new DispatcherTimer { Interval = TimeSpan.FromSeconds(8) };
                     monitor.Tick += delegate { RefreshMonitor(); };
                     UpdateMonitor(); break;
                 case "getWidgets": reply.Widgets = Snapshot(); break;
                 case "ping": break;
                 case "shutdown":
                     generation++;
-                    if (monitor != null) { monitor.Stop(); monitor.Dispose(); monitor = null; }
+                    if (monitor != null) { monitor.Stop(); monitor = null; }
                     break;
                 default: throw new InvalidOperationException();
             }
@@ -194,56 +188,39 @@ namespace AppShelf.Network
             };
         }
 
-        private static void Activate(Form form)
+        private static void Activate(Window window)
         {
-            if (form.WindowState == FormWindowState.Minimized) form.WindowState = FormWindowState.Normal;
-            form.Show(); form.Activate();
+            if (window.WindowState == WindowState.Minimized) window.WindowState = WindowState.Normal;
+            window.Activate();
         }
-
-        private static void ApplyDarkTheme(Control control)
-        {
-            Color surface = Color.FromArgb(20, 28, 42);
-            Color field = Color.FromArgb(31, 42, 60);
-            Color foreground = Color.FromArgb(235, 240, 248);
-            control.ForeColor = foreground;
-            control.BackColor = surface;
-            TextBox editor = control as TextBox;
-            if (editor != null) editor.BackColor = field;
-            Button button = control as Button;
-            if (button != null)
-            {
-                button.UseVisualStyleBackColor = false;
-                button.FlatStyle = FlatStyle.Flat;
-                button.BackColor = field;
-                button.FlatAppearance.BorderColor = Color.FromArgb(59, 75, 98);
-                button.FlatAppearance.MouseOverBackColor = Color.FromArgb(46, 60, 81);
-                button.FlatAppearance.MouseDownBackColor = Color.FromArgb(39, 52, 72);
-            }
-            CheckBox checkbox = control as CheckBox;
-            if (checkbox != null) checkbox.UseVisualStyleBackColor = false;
-            foreach (Control child in control.Controls) ApplyDarkTheme(child);
-        }
-
 
         private static void OpenReport()
         {
-            if (reportWindow != null && !reportWindow.IsDisposed) { Activate(reportWindow); return; }
-            Form form = new Form { Text = "AppShelf — Диагностика сети", Size = new Size(790,640),
-                MinimumSize = new Size(520,400), StartPosition = FormStartPosition.CenterScreen };
-            FlowLayoutPanel commands = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 46, Padding = new Padding(5) };
-            Button refresh = new Button { Text = "Повторить проверку", AutoSize = true, Height = 32 };
-            Button copy = new Button { Text = "Скопировать отчёт", AutoSize = true, Height = 32 };
-            Button config = new Button { Text = "Настройки", AutoSize = true, Height = 32 };
-            TextBox report = new TextBox { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true,
-                WordWrap = false, ScrollBars = ScrollBars.Both, Font = new Font("Consolas", 10) };
-            commands.Controls.Add(refresh); commands.Controls.Add(copy); commands.Controls.Add(config);
-            form.Controls.Add(report); form.Controls.Add(commands);
+            if (reportWindow != null) { Activate(reportWindow); return; }
+            Window form = new Window { Title = "AppShelf — Диагностика сети", Width = 790, Height = 640,
+                MinWidth = 520, MinHeight = 400, WindowStartupLocation = WindowStartupLocation.CenterScreen };
+            PluginTheme.Prepare(form);
+            DockPanel root = new DockPanel { Margin = new Thickness(22) }; form.Content = root;
+            StackPanel header = new StackPanel { Margin = new Thickness(0, 0, 0, 16) };
+            TextBlock heading = PluginTheme.Label("Диагностика сети", 22);
+            heading.FontWeight = FontWeights.SemiBold; header.Children.Add(heading);
+            TextBlock hint = PluginTheme.Label("Проверки соединения, DNS, прокси и маршрутов Windows.", 13, true);
+            hint.Margin = new Thickness(0, 6, 0, 0); header.Children.Add(hint);
+            DockPanel.SetDock(header, Dock.Top); root.Children.Add(header);
+            WrapPanel commands = new WrapPanel { Margin = new Thickness(0, 10, 0, 0) };
+            DockPanel.SetDock(commands, Dock.Bottom); root.Children.Add(commands);
+            Button refresh = PluginTheme.Button("Повторить проверку", true);
+            Button copy = PluginTheme.Button("Скопировать отчёт");
+            Button config = PluginTheme.Button("Настройки");
+            TextBox report = PluginTheme.Report();
+            commands.Children.Add(refresh); commands.Children.Add(copy); commands.Children.Add(config);
+            root.Children.Add(report);
             refresh.Click += delegate { RefreshReport(); };
-            copy.Click += delegate { try { if (report.Text.Length != 0) Clipboard.SetText(report.Text); } catch (Exception ex) { MessageBox.Show(form, ex.Message); } };
+            copy.Click += delegate { try { if (report.Text.Length != 0) Clipboard.SetText(report.Text); } catch (Exception ex) { MessageBox.Show(form, ex.Message, "Сеть", MessageBoxButton.OK, MessageBoxImage.Error); } };
             config.Click += delegate { OpenSettings(); };
-            form.FormClosed += delegate { if (reportWindow == form) { reportWindow = null; reportBox = null; refreshButton = null; } };
+            form.Closed += delegate { if (reportWindow == form) { reportWindow = null; reportBox = null; refreshButton = null; } };
             reportWindow = form; reportBox = report; refreshButton = refresh;
-            ApplyDarkTheme(form); form.Show(); RefreshReport();
+            form.Show(); RefreshReport();
         }
 
         private static async void RefreshReport()
@@ -254,7 +231,7 @@ namespace AppShelf.Network
             NetworkSettings captured = settings;
             TextBox target = reportBox;
             Button button = refreshButton;
-            button.Enabled = false; target.Text = "Проверяем…";
+            button.IsEnabled = false; target.Text = "Проверяем…";
             try
             {
                 string local = await Task.Run(new Func<string>(NetworkProbes.LocalReport));
@@ -269,40 +246,46 @@ namespace AppShelf.Network
                     report = "Проверки пользовательских адресов (не оценка всего интернета):" +
                         Environment.NewLine + a.Result + Environment.NewLine + b.Result;
                 }
-                if (version == generation && target == reportBox && !target.IsDisposed)
+                if (version == generation && target == reportBox)
                     target.Text = report + Environment.NewLine + Environment.NewLine + local;
             }
             catch (Exception ex)
-            { if (target == reportBox && !target.IsDisposed && version == generation) target.Text = "Ошибка диагностики: " + ex.Message; }
+            { if (target == reportBox && version == generation) target.Text = "Ошибка диагностики: " + ex.Message; }
             finally
             {
                 reportPending = false;
-                if (!button.IsDisposed) button.Enabled = true;
+                if (button == refreshButton) button.IsEnabled = true;
                 if (reportBox != null && reportBox != target) RefreshReport();
             }
         }
 
-        private static void AddTarget(TableLayoutPanel layout, int row, int index, string savedMode, string savedTarget,
+        private static void AddTarget(StackPanel layout, int index, string savedMode, string savedTarget,
             out ComboBox mode, out TextBox address)
         {
-            ComboBox list = new ComboBox { Dock = DockStyle.Fill, DropDownStyle = ComboBoxStyle.DropDownList };
-            list.Items.AddRange(new object[] { "По умолчанию — ICMP + HTTPS", "ICMP — ping узла",
-                "HTTPS — проверка сайта", "TCP — подключение к порту" });
+            TextBlock title = PluginTheme.Label("Проверка " + index, 14);
+            title.FontWeight = FontWeights.SemiBold; title.Margin = new Thickness(0, 12, 0, 6);
+            layout.Children.Add(title);
+            ComboBox list = new ComboBox { MinHeight = 34, Margin = new Thickness(0, 0, 0, 8),
+                Tag = "mode" + index };
+            System.Windows.Automation.AutomationProperties.SetName(list, "Режим проверки " + index);
+            foreach (string name in new[] { "По умолчанию — ICMP + HTTPS", "ICMP — ping узла",
+                "HTTPS — проверка сайта", "TCP — подключение к порту" }) list.Items.Add(name);
             string selected = savedMode ?? "default";
             list.SelectedIndex = selected == "icmp" ? 1 : selected == "https" ? 2 : selected == "tcp" ? 3 : 0;
-            TextBox input = new TextBox { Dock = DockStyle.Fill, Text = list.SelectedIndex == 0 ?
-                NetworkChecks.DefaultHost(index) : savedTarget ?? "", Enabled = list.SelectedIndex != 0 };
-            list.SelectedIndexChanged += delegate
+            TextBox input = new TextBox { MinHeight = 34, Tag = "target" + index,
+                Text = list.SelectedIndex == 0 ? NetworkChecks.DefaultHost(index) : savedTarget ?? "",
+                IsEnabled = list.SelectedIndex != 0, VerticalContentAlignment = VerticalAlignment.Center };
+            System.Windows.Automation.AutomationProperties.SetName(input, "Адрес проверки " + index);
+            list.SelectionChanged += delegate
             {
                 string host = NetworkChecks.DefaultHost(index);
-                input.Enabled = list.SelectedIndex != 0;
+                input.IsEnabled = list.SelectedIndex != 0;
                 if (list.SelectedIndex == 0) input.Text = host;
                 else if (String.IsNullOrWhiteSpace(input.Text) || input.Text == host)
                     input.Text = list.SelectedIndex == 2 ? (index == 1 ? "https://1.1.1.1/cdn-cgi/trace" : "https://ya.ru/") :
                         list.SelectedIndex == 3 ? host + ":443" : host;
             };
-            layout.Controls.Add(new Label { Text = "Проверка " + index, AutoSize = true },0,row);
-            layout.Controls.Add(list,1,row); layout.Controls.Add(input,1,row+1);
+            layout.Children.Add(list); layout.Children.Add(input);
             mode = list; address = input;
         }
 
@@ -311,26 +294,34 @@ namespace AppShelf.Network
 
         private static void OpenSettings()
         {
-            if (settingsWindow != null && !settingsWindow.IsDisposed) { Activate(settingsWindow); return; }
-            Form form = new Form { Text = "AppShelf — Настройки сети", Size = new Size(580,290),
-                MinimumSize = new Size(460,290), StartPosition = FormStartPosition.CenterScreen };
-            TableLayoutPanel layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(12),
-                ColumnCount = 2, RowCount = 6 };
-            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,110));
-            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
-            for (int i = 0; i < 6; i++) layout.RowStyles.Add(new RowStyle(SizeType.Absolute,32));
-            CheckBox enabled = new CheckBox { Text = "Фоновые сетевые проверки", AutoSize = true, Checked = settings.ShowNetwork };
-            layout.Controls.Add(enabled,0,0); layout.SetColumnSpan(enabled,2);
+            if (settingsWindow != null) { Activate(settingsWindow); return; }
+            Window form = new Window { Title = "AppShelf — Настройки сети", Width = 580, Height = 440,
+                MinWidth = 460, MinHeight = 320, WindowStartupLocation = WindowStartupLocation.CenterScreen };
+            PluginTheme.Prepare(form);
+            DockPanel root = new DockPanel { Margin = new Thickness(22) }; form.Content = root;
+            StackPanel header = new StackPanel { Margin = new Thickness(0, 0, 0, 10) };
+            TextBlock heading = PluginTheme.Label("Настройки сети", 22);
+            heading.FontWeight = FontWeights.SemiBold; header.Children.Add(heading);
+            DockPanel.SetDock(header, Dock.Top); root.Children.Add(header);
+            StackPanel buttons = new StackPanel { Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 16, 0, 0) };
+            DockPanel.SetDock(buttons, Dock.Bottom); root.Children.Add(buttons);
+            Button save = PluginTheme.Button("Сохранить", true); save.Tag = "save";
+            Button cancel = PluginTheme.Button("Отмена"); cancel.Click += delegate { form.Close(); };
+            buttons.Children.Add(save); buttons.Children.Add(cancel);
+            StackPanel layout = new StackPanel();
+            ScrollViewer scroll = new ScrollViewer { Content = layout, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+            root.Children.Add(scroll);
+            CheckBox enabled = new CheckBox { Content = "Фоновые сетевые проверки", IsChecked = settings.ShowNetwork, Tag = "enabled" };
+            layout.Children.Add(enabled);
             ComboBox one,two; TextBox first,second;
-            AddTarget(layout,1,1,settings.NetworkCheck1Mode,settings.NetworkCheck1Target,out one,out first);
-            AddTarget(layout,3,2,settings.NetworkCheck2Mode,settings.NetworkCheck2Target,out two,out second);
-            Button save = new Button { Text = "Сохранить", AutoSize = true, Dock = DockStyle.Right };
-            layout.Controls.Add(save,1,5); form.Controls.Add(layout);
+            AddTarget(layout,1,settings.NetworkCheck1Mode,settings.NetworkCheck1Target,out one,out first);
+            AddTarget(layout,2,settings.NetworkCheck2Mode,settings.NetworkCheck2Target,out two,out second);
             save.Click += delegate
             {
                 try
                 {
-                    NetworkSettings next = new NetworkSettings { ShowNetwork = enabled.Checked,
+                    NetworkSettings next = new NetworkSettings { ShowNetwork = enabled.IsChecked == true,
                         NetworkCheck1Mode = Mode(one), NetworkCheck2Mode = Mode(two) };
                     next.NetworkCheck1Target = next.NetworkCheck1Mode == null ? null : first.Text.Trim();
                     next.NetworkCheck2Target = next.NetworkCheck2Mode == null ? null : second.Text.Trim();
@@ -339,10 +330,10 @@ namespace AppShelf.Network
                     if (reportBox != null) reportBox.Text = "Настройки изменились. Повторите проверку.";
                     form.Close();
                 }
-                catch (Exception ex) { MessageBox.Show(form, ex.Message, "Настройки сети", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+                catch (Exception ex) { MessageBox.Show(form, ex.Message, "Настройки сети", MessageBoxButton.OK, MessageBoxImage.Warning); }
             };
-            form.FormClosed += delegate { if (settingsWindow == form) settingsWindow = null; };
-            settingsWindow = form; ApplyDarkTheme(form); form.Show();
+            form.Closed += delegate { if (settingsWindow == form) settingsWindow = null; };
+            settingsWindow = form; form.Show();
         }
     }
 }

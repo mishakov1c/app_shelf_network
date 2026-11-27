@@ -27,7 +27,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           repository: mishakov1c/app_shelf
-          ref: 76fee373e94679c682a4d440076915338b872055
+          ref: c8edc77b5a9706e9b2f7a35a0c9a9deb2b4e3c46
           path: .test-host
           persist-credentials: false
       - name: Test actual installed plugin through host API

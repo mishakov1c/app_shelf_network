@@ -20,7 +20,7 @@ On Windows with .NET Framework 4.8, run in Windows PowerShell 5.1:
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File Build.ps1
 ```
 
-Output: `dist/NetworkPlugin-1.0.1.asplugin`. The build uses the local API v1 protocol source and does not require AppShelf.exe, a host source checkout or internet access.
+Output: `dist/NetworkPlugin-1.0.2.asplugin`. The build uses the local API v1 protocol source and does not require AppShelf.exe, a host source checkout or internet access.
 
 ## Tests
 
@@ -30,7 +30,7 @@ powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File tests/NetworkMonito
 powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File tests/NetworkRuntime.Tests.ps1 -HostSourceDirectory C:\path\to\app_shelf
 ```
 
-The runtime test deliberately compiles the real host runtime from a supplied checkout. CI checks out the exact tested upstream revision `76fee373e94679c682a4d440076915338b872055` solely for that compatibility test; build and independent unit tests do not depend on the host repository. Tests use temporary profiles with monitoring off, not the user's Windows network settings.
+The runtime test deliberately compiles the real host runtime from a supplied checkout. CI checks out AppShelf 2.24.3 revision `c8edc77b5a9706e9b2f7a35a0c9a9deb2b4e3c46` solely for that compatibility test; build and independent unit tests do not depend on the host repository. Tests use temporary profiles with monitoring off, not the user's Windows network settings.
 
 ## Installation
 
@@ -45,3 +45,5 @@ Extracted from AppShelf commit [`76fee373`](https://github.com/mishakov1c/app_sh
 Normal pushes only build, test and upload CI artifacts. For an explicitly approved preview, a commit on `main` with exact subject `release-preview: NetworkPlugin X.Y.Z` triggers a separate publication job only after all build, monitor, UI and runtime/backup tests succeed. The manifest and executable versions must match. The tag is `vX.Y.Z`, flagged as a prerelease; the package is published independently of AppShelf. No release is published by ordinary development commits. A later stable release should use a tested package and follow the project's acceptance process.
 
 Version 1.0.1 adds the public GitHub Releases update source. Install it manually over 1.0.0; subsequent newer previews can be checked in the AppShelf plugin manager. This release does not change network monitoring or settings.
+
+Version 1.0.2 Preview migrates diagnostics and settings windows to standalone WPF with AppShelf dark styles, including dark title bars where supported by Windows, dropdowns and scrollbars. Network probes and settings format are unchanged. The update source from 1.0.1 is retained; select the eligible preview in the plugin manager to update. Visual acceptance and real online update remain to be checked.
