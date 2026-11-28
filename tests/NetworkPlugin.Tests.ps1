@@ -15,6 +15,25 @@ try {
     Write-Host 'PASS: packaged manifest version and GitHub update source'
     $exe = Join-Path $temp 'unpacked\bin\NetworkPlugin.exe'
     $assembly = [Reflection.Assembly]::LoadFrom($exe)
+    $icon = [IO.File]::ReadAllBytes((Join-Path $root 'Assets\NetworkPlugin.ico'))
+    $sizes = @(16,20,24,32,48,64,128,256)
+    if ($icon.Length -lt 134 -or [BitConverter]::ToUInt16($icon,0) -ne 0 -or [BitConverter]::ToUInt16($icon,2) -ne 1 -or [BitConverter]::ToUInt16($icon,4) -ne 8) { throw 'Invalid ICO directory.' }
+    for ($i=0; $i -lt $sizes.Count; $i++) {
+        $o = 6 + 16 * $i
+        $width = if ($icon[$o] -eq 0) { 256 } else { [int]$icon[$o] }
+        $height = if ($icon[$o+1] -eq 0) { 256 } else { [int]$icon[$o+1] }
+        $length = [BitConverter]::ToUInt32($icon,$o+8)
+        $offset = [BitConverter]::ToUInt32($icon,$o+12)
+        if ($width -ne $sizes[$i] -or $height -ne $width -or [BitConverter]::ToUInt16($icon,$o+6) -ne 32 -or $length -eq 0 -or $offset -lt 134 -or ([long]$offset + $length) -gt $icon.Length) { throw 'Invalid ICO frame.' }
+    }
+    $resource = $assembly.GetManifestResourceStream('AppShelf.Network.Icon.ico')
+    if ($null -eq $resource) { throw 'Embedded icon missing.' }
+    $memory = New-Object IO.MemoryStream
+    try {
+        $resource.CopyTo($memory)
+        if ([Convert]::ToBase64String($memory.ToArray()) -cne [Convert]::ToBase64String($icon)) { throw 'Embedded ICO differs from source.' }
+    } finally { $resource.Dispose(); $memory.Dispose() }
+    Write-Host 'PASS: eight ICO frames and byte-identical embedded resource.'
     $targetType = $assembly.GetType('AppShelf.Network.NetworkChecks',$true)
     $parse = $targetType.GetMethod('TryParse',[Reflection.BindingFlags]'Static,NonPublic')
     $targetCases = @(
