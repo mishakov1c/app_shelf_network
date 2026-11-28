@@ -1,66 +1,128 @@
-# NetworkPlugin for AppShelf
+# NetworkPlugin 1.1.0 for AppShelf
 
-Development plan: [ROADMAP.md](ROADMAP.md).
+Independent Windows WPF network diagnostics plugin for [AppShelf](https://github.com/mishakov1c/app_shelf), plugin API v1.
+Development plan: [ROADMAP.md](ROADMAP.md). Licensing: [NOTICE.md](NOTICE.md), [LICENSE](LICENSE) (GPL-3.0).
 
-Independent network diagnostics plugin for [AppShelf](https://github.com/mishakov1c/app_shelf), using plugin API v1.
+## Features
 
-- Two configurable checks: default ICMP + HTTPS with TCP fallback, ICMP, HTTPS, TCP.
-- Eight-second background monitoring, three optional bottom-panel indicators.
-- Manual DNS/HTTPS diagnostics, Windows route, active adapters and proxy report.
-- Separate settings in the host-provided plugin data directory; `network-settings.json` is the only file allowed for AppShelf backups, after explicit user consent. No writes to Windows network settings.
-- Happ recovery is not included.
+- Two configurable ICMP / HTTPS / TCP checks, default ICMP + HTTPS with TCP fallback.
+- Eight-second monitoring and the original `network1`, `network2`, `route` indicators.
+- One diagnostics window: connectivity, active interfaces, DNS, WinINET proxy and Windows route.
+- One settings window, with a separate **VPN / TUN** section.
+- Optional VPN module, **off by default**, with explicit adapter and process selection.
+- Optional fourth `tun` indicator; its action opens the same diagnostics window.
+- Guarded, separately confirmed recovery steps and local proxy restoration.
+- One plugin ID (`appshelf.network`), one manifest, one `NetworkPlugin.exe` and one plugin process.
+  Explicit UAC operations launch the appropriate Windows utility, not another plugin.
+
+## VPN settings and safety
+
+Open the existing settings window and enable **Включить модуль VPN**. Only then are adapters and
+readable running programs enumerated. Select your VPN adapters by their stable Windows IDs and
+programs by full local EXE path, not by name patterns. Refresh the lists to discover newly started programs.
+Nothing is automatically selected; missing saved entries remain selectable/removable.
+System, host and plugin processes are excluded. Up to 16 adapters and 16 EXE paths may be selected.
+
+The fourth indicator is separately optional. Enable **Предлагать четвёртый индикатор VPN / TUN**,
+save, then add it through AppShelf's standard indicator picker. With this option off,
+VPN background polling stops; manual VPN diagnostics remain available while the module is enabled.
+Disabling the module hides VPN recovery and the fourth descriptor, stops its polling, and excludes
+its diagnostics. It retains local selections for later use and does not change Windows.
+
+The indicator distinguishes an absent, inactive, unknown or ambiguous selection, a Windows-selected
+IPv4 route, and an Up adapter with no matching sampled route. It checks Windows' interface choice
+for `1.1.1.1` and `8.8.8.8`, without transmitting VPN test packets. Split routing and IPv6 may differ.
+**Adapter/route state is not proof of VPN connectivity or a client application's switch state.**
+
+Opening or refreshing the common diagnostics still performs NetworkPlugin's existing configured
+network checks. The VPN appendix only reads local state. Proxy, DNS and connectivity sections are
+shared, not repeated in a separate window.
+
+### Recovery
+
+Recovery never runs on launch, handshake, timer tick, indicator refresh or settings save.
+Every modifying step requires an explicit confirmation, defaulting to **No**:
+
+1. Stop only the selected EXE paths, confirming each PID. PID, start time and EXE path are rechecked.
+2. Disable only selected Up adapters, confirming each one. ID, name, index and state are rechecked;
+   Windows requests UAC for `netsh`. Do not select a physical adapter unless you intend to disconnect it.
+3. Temporarily disable the current user's manual WinINET proxy only when every configured endpoint
+   is loopback, no PAC is present, and the expected server and enabled state still match.
+   Remote, mixed, malformed and PAC configurations are not modified.
+4. Run DNS and direct/system-proxy HTTPS checks; offer `ipconfig /flushdns` with UAC only after DNS failure.
+   DNS server addresses are never changed. Connectivity is checked again afterwards.
+
+Cancellation of UAC or an error stops subsequent recovery steps. Completed actions remain in the result.
+There is no automatic network reset, adapter reenabling or process restart.
+**VPN, internet access and RDP may be interrupted.** An active TUN is normal during VPN use.
+The plugin process is not a sandbox.
+
+**Вернуть прокси…** is available after a confirmed proxy disable during the same plugin process session,
+including after closing/reopening the diagnostics window. Restoration requires confirmation and the same
+proxy guards. After plugin restart, use Windows settings if needed; the original server address is retained.
+Disabling the module does not undo prior system actions.
+
+## Compatibility, backup and updates
+
+Version 1.1.0 adds optional fields to the existing `network-settings.json`. Existing 1.0.3 files are
+read without rewriting them or enabling VPN. The original network fields, indicator IDs, command `open`,
+plugin ID, entry point and GitHub update repository are unchanged.
+
+`network-settings.json` remains the only backup-allowlisted file, now including VPN selections.
+AppShelf backs it up only after explicit consent. It contains local program paths and adapter IDs;
+do not commit or publish user settings or exported profiles.
+Update installation preserves plugin data, archives the previous package through AppShelf, and leaves
+the new version disabled until explicitly enabled. The archived 1.0.3 can read the additive settings.
 
 ## Build
 
-Double-click `Build-Plugin.cmd` in the repository root to build the `.asplugin` package and open the `dist` folder. It does not install or start the plugin. For unattended builds, run `Build-Plugin.cmd --no-open --no-pause`; the compiler exit status is propagated.
-
-On Windows with .NET Framework 4.8, run in Windows PowerShell 5.1:
+Double-click `Build-Plugin.cmd`, or use Windows PowerShell 5.1 / .NET Framework 4.8:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File Build.ps1
+.\Build-Plugin.cmd --no-open --no-pause
 ```
 
-Output: `dist/NetworkPlugin-1.0.3.asplugin`. The build uses the local API v1 protocol source and does not require AppShelf.exe, a host source checkout or internet access.
+Output: `dist/NetworkPlugin-1.1.0.asplugin`.
+Repeated builds into the same directory atomically replace the package.
+The build does not install/start the plugin, access a user profile, or require AppShelf sources or internet.
+License and provenance notices are included under `bin/` alongside the single EXE.
 
-### Official icon
+### Icon
 
-`Assets/NetworkPlugin.Source.png` is the approved original image, preserved unchanged.
-`Assets/NetworkPlugin.png` removes transparent margins and detached export speckles while preserving the main artwork and its proportions.
-`Assets/NetworkPlugin.ico` contains 32-bit frames at 16, 20, 24, 32, 48, 64, 128 and 256 pixels.
-Regenerate both derived files with `powershell.exe -NoProfile -ExecutionPolicy Bypass -File Assets/Build-Icon.ps1`.
-The ICO is embedded both as the Windows EXE icon and as a managed resource shared by the diagnostics and settings WPF windows; no external image files are required at runtime.
+The original globe and WPF theme are retained. `Assets/NetworkPlugin.Source.png` is the approved
+original; `NetworkPlugin.png` and `NetworkPlugin.ico` are derived assets.
+The ICO contains 32-bit frames at 16, 20, 24, 32, 48, 64, 128 and 256 pixels,
+embedded as both the Windows EXE icon and a frozen managed resource shared by both windows.
+Regenerate with `powershell.exe -NoProfile -ExecutionPolicy Bypass -File Assets/Build-Icon.ps1`.
 
 ## Tests
 
-```powershell
-powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File tests/NetworkPlugin.Tests.ps1
-powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File tests/NetworkMonitor.Tests.ps1
-powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File tests/NetworkRuntime.Tests.ps1 -HostSourceDirectory C:\path\to\app_shelf
-powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File tests/NetworkIcon.Tests.ps1
-```
+Run using Windows PowerShell 5.1 `-NoProfile -STA -ExecutionPolicy Bypass -File`:
 
-The icon test reads the already built package, validates all ICO frames and the embedded resource,
-extracts Explorer Shell icons, and checks both real EXE windows' native icons.
-It uses an isolated profile with background monitoring disabled and diagnostic targets limited to `127.0.0.1:9`.
-Evidence is written outside the repository. Optional `-CaptureDesktop` also captures the taskbar and Alt+Tab;
-it briefly sends Alt+Tab and should only be used during an interactive acceptance session.
+| Script in `tests/` | Coverage |
+| --- | --- |
+| `NetworkPlugin.Tests.ps1` | Two consecutive builds, manifest/update source, icon resource, targets, atomic settings, original indicators |
+| `NetworkMonitor.Tests.ps1` | Offline monitor generations, WPF settings, discovery fixtures, VPN-only monitoring, indicator transitions, complete disable |
+| `VpnModule.Tests.ps1` | Memory-only recovery, confirmations, proxy guards, identity checks, cancellation, route states, legacy settings |
+| `NetworkRuntime.Tests.ps1 -HostSourceDirectory .test-host` | Real host runtime, lifecycle, backup consent/allowlist/restore |
+| `NetworkUpgrade.Tests.ps1 -HostSourceDirectory .test-host -BaselinePackage dist/NetworkPlugin-1.0.3.asplugin` | Actual local upgrade, rejected hash/decline, previous package archive, VPN off/on, settings backup and archived rollback |
+| `NetworkIcon.Tests.ps1` | Built EXE, Windows Shell, singleton windows, icons, report sections and layout at three sizes |
+| `NetworkIcon.Tests.ps1 -VpnEnabled` | Same real EXE checks with VPN on and UI Automation decline of recovery |
 
-The runtime test deliberately compiles the real host runtime from a supplied checkout. CI checks out AppShelf 2.24.3 revision `c8edc77b5a9706e9b2f7a35a0c9a9deb2b4e3c46` solely for that compatibility test; build and independent unit tests do not depend on the host repository. Tests use temporary profiles with monitoring off, not the user's Windows network settings.
+Tests isolate profiles and never approve real recovery. Network probes in actual-window tests are
+limited to `127.0.0.1:9`; recovery/connectivity tests use in-memory substitutes.
+Adapter IDs, names and program paths in fixtures are synthetic, not captured from a user machine.
+Supply a host checkout at `.test-host` (or another directory) for runtime/upgrade tests.
+Window screenshots/evidence stay outside the repository. They can contain local adapter/program details;
+do not publish them. Optional `-CaptureDesktop` captures other desktop windows and sends Alt+Tab:
+use it only during an interactive acceptance session.
 
-## Installation
+CI pins the host revision for compatibility and the accepted 1.0.3 baseline for upgrade tests.
+No AppShelf core modification is needed. Local tests do not constitute CI or real destructive-operation acceptance.
 
-Requires a compatible AppShelf build with plugin API v1. Install the package in the plugin manager and confirm trust, then enable it. AppShelf beta.3 migration is being developed to transfer the legacy settings and indicator selection on first explicit enable. Until that host transition is available, avoid simultaneous built-in and plugin monitoring of the same targets.
+## Publication
 
-## Provenance and status
-
-Extracted from AppShelf commit [`76fee373`](https://github.com/mishakov1c/app_shelf/commit/76fee373e94679c682a4d440076915338b872055). The network implementation and manifest are unchanged; only paths, standalone build, test wiring and documentation are adapted. The upstream GPL-3.0 license is retained. The initial package is a development build, not a published release.
-
-## Releases
-
-Normal pushes only build, test and upload CI artifacts. An explicitly approved commit on `main` with exact subject `release-preview: NetworkPlugin X.Y.Z` publishes a prerelease; `release: NetworkPlugin X.Y.Z` publishes a stable release and marks it Latest. Publication requires successful build, offline regression (including the embedded icon), monitor/UI and runtime/backup tests. The manifest and executable versions must match. Both channels use tag `vX.Y.Z`. Ordinary development commits do not publish releases.
-
-Version 1.0.1 adds the public GitHub Releases update source. Install it manually over 1.0.0; subsequent newer previews can be checked in the AppShelf plugin manager. This release does not change network monitoring or settings.
-
-Version 1.0.2 Preview migrates diagnostics and settings windows to standalone WPF with AppShelf dark styles, including dark title bars where supported by Windows, dropdowns and scrollbars. Network probes and settings format are unchanged. The update source from 1.0.1 is retained; select the eligible preview in the plugin manager to update. Visual acceptance and real online update from 1.0.1 were confirmed by the user on 2026-11-27; the only remaining remark was the missing app icon.
-
-Version 1.0.3 adds the official globe icon to the EXE and both WPF windows. Local Windows acceptance by the agent confirmed title bars, taskbar, Alt+Tab and Explorer; user approved stable publication before final visual confirmation on the released package. Network behavior and update source are unchanged.
+Ordinary commits build/test and upload CI artifacts only. The existing stable/preview workflow is retained:
+an explicitly approved `main` commit with exact subject `release: NetworkPlugin X.Y.Z` publishes stable,
+or `release-preview: NetworkPlugin X.Y.Z` publishes a preview, after all checks pass.
+Manifest and executable versions must agree. **Version 1.1.0 is a review candidate; no 1.1.0 tag or release has been published.**

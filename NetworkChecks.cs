@@ -23,6 +23,10 @@ namespace AppShelf.Network
         [DataMember(Name = "networkCheck1Target", EmitDefaultValue = false)] public string NetworkCheck1Target;
         [DataMember(Name = "networkCheck2Mode", EmitDefaultValue = false)] public string NetworkCheck2Mode;
         [DataMember(Name = "networkCheck2Target", EmitDefaultValue = false)] public string NetworkCheck2Target;
+        [DataMember(Name = "vpnEnabled", EmitDefaultValue = false)] public bool VpnEnabled;
+        [DataMember(Name = "showVpnIndicator", EmitDefaultValue = false)] public bool ShowVpnIndicator;
+        [DataMember(Name = "vpnAdapterIds", EmitDefaultValue = false)] public string[] VpnAdapterIds;
+        [DataMember(Name = "vpnProcessPaths", EmitDefaultValue = false)] public string[] VpnProcessPaths;
         [OnDeserializing] private void Defaults(StreamingContext context) { ShowNetwork = true; }
 
         internal static NetworkSettings Load(string directory)
@@ -45,6 +49,7 @@ namespace AppShelf.Network
             if (!NetworkChecks.TryParse(NetworkCheck1Mode, NetworkCheck1Target, 1, out target, out error) ||
                 !NetworkChecks.TryParse(NetworkCheck2Mode, NetworkCheck2Target, 2, out target, out error))
                 throw new InvalidDataException(error);
+            VpnModule.ValidateSelection(VpnAdapterIds, VpnProcessPaths);
         }
 
         internal void Save(string directory)
@@ -57,6 +62,7 @@ namespace AppShelf.Network
                 using (FileStream stream = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
                 {
                     new DataContractJsonSerializer(typeof(NetworkSettings)).WriteObject(stream, this);
+                    if (stream.Length > 16384) throw new InvalidDataException("Network settings are too large.");
                     stream.Flush(true);
                 }
                 if (File.Exists(path)) File.Replace(temp, path, null); else File.Move(temp, path);

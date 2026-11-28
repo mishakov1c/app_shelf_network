@@ -10,9 +10,9 @@ try {
     $program = [IO.File]::ReadAllText((Join-Path $root 'NetworkPlugin.cs'))
     foreach ($index in @(1,2)) {
         $slot = if ($index -eq 1) { "first" } else { "second" }
-        $anchor = "Task<string> $slot = NetworkChecks.ProbeAsync(NetworkChecks.Resolve(captured,$index),$index)"
+        $anchor = "Task<string> $slot = captured.ShowNetwork ? NetworkChecks.ProbeAsync(NetworkChecks.Resolve(captured,$index),$index)"
         if ($program.Split(@($anchor), [StringSplitOptions]::None).Length -ne 2) { throw 'Monitor isolation boundary missing.' }
-        $program = $program.Replace($anchor, "Task<string> $slot = NetworkMonitorTests.Probe(NetworkChecks.Resolve(captured,$index),$index)")
+        $program = $program.Replace($anchor, "Task<string> $slot = captured.ShowNetwork ? NetworkMonitorTests.Probe(NetworkChecks.Resolve(captured,$index),$index)")
     }
     $anchor = 'Task.Run(new Func<string>(NetworkProbes.RouteSummary))'
     if ($program.Split(@($anchor), [StringSplitOptions]::None).Length -ne 2) { throw 'Route isolation boundary missing.' }
@@ -20,6 +20,8 @@ try {
     $anchor = 'form.Show(); RefreshReport();'
     if ($program.Split(@($anchor), [StringSplitOptions]::None).Length -ne 2) { throw 'Report isolation boundary missing.' }
     $program = $program.Replace($anchor, 'form.Show();')
+    $program = $program.Replace('VpnModule.ReadStatus(captured)', 'NetworkMonitorTests.VpnStatus(captured)')
+    $program = $program.Replace('new VpnSettingsPanel(settings)', 'new VpnSettingsPanel(settings, new DiscoveryFixture())')
     $harness = @'
 using System;
 using System.Collections.Generic;
@@ -34,12 +36,34 @@ using AppShelf;
 
 namespace AppShelf.Network
 {
+    internal sealed class DiscoveryFixture : IVpnSystem
+    {
+        internal static int Reads;
+        internal static string ProcessPath;
+        public VpnAdapter[] Adapters() { Reads++; return new[] { new VpnAdapter { Id="11111111-1111-1111-1111-111111111111", Name="VPN fixture",Index=10,State=System.Net.NetworkInformation.OperationalStatus.Up } }; }
+        public VpnProcess[] Processes() { Reads++; return new[] { new VpnProcess {Id=111,Path=ProcessPath,Started=123} }; }
+        public NetworkProbes.ProxySnapshot Proxy() { throw new Exception("Unexpected proxy read"); }
+        public Task StopAsync(VpnProcess p) { throw new Exception("Unsafe test action"); }
+        public Task<int> DisableAsync(VpnAdapter a) { throw new Exception("Unsafe test action"); }
+        public void SetProxy(bool enabled,string expected) { throw new Exception("Unsafe test action"); }
+        public Task<NetworkProbes.ConnectivitySnapshot> ConnectivityAsync() { throw new Exception("Unexpected connectivity"); }
+        public Task<int> FlushDnsAsync() { throw new Exception("Unsafe test action"); }
+    }
     public static class NetworkMonitorTests
     {
         private static readonly BindingFlags Flags = BindingFlags.Static | BindingFlags.NonPublic;
         private static readonly List<TaskCompletionSource<string>> First = new List<TaskCompletionSource<string>>();
         private static readonly List<TaskCompletionSource<string>> Second = new List<TaskCompletionSource<string>>();
         private static readonly List<string> Targets = new List<string>();
+        private static string tunState = "TUN отсутствует";
+        private static int vpnReads;
+        private static ManualResetEvent vpnGate;
+        internal static string VpnStatus(NetworkSettings captured) {
+            Interlocked.Increment(ref vpnReads);
+            if (vpnGate != null && !vpnGate.WaitOne(3000)) throw new Exception("Fixture timeout");
+            if (tunState == "throw") throw new Exception("Simulated adapter read failure");
+            return tunState;
+        }
 
         private static void Assert(bool value, string message)
         { if (!value) throw new Exception(message); }
@@ -88,6 +112,7 @@ namespace AppShelf.Network
 
         public static void Run(string folder)
         {
+            DiscoveryFixture.ProcessPath = System.IO.Path.Combine(System.IO.Path.GetPathRoot(folder), "SyntheticVpnFixtures", "client.exe");
             {
                 Dispatcher dispatcher = Dispatcher.CurrentDispatcher;
                 DispatcherTimer timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(60) };
@@ -141,6 +166,53 @@ namespace AppShelf.Network
                     Assert(!saved.ShowNetwork && saved.NetworkCheck1Target == "127.0.0.1:8443", "UI save did not persist target");
                     Assert(First.Count == 3 && !timer.IsEnabled, "Settings UI enabled traffic unexpectedly");
                     Console.WriteLine("PASS: report composition, singleton windows and real settings save");
+                    Assert(DiscoveryFixture.Reads == 0 && vpnReads == 0, "Disabled VPN performed discovery/monitoring");
+                    Assert(Find<Button>(report, "vpnRecover").Visibility == Visibility.Collapsed &&
+                        Find<Button>(report, "vpnDisable").Visibility == Visibility.Collapsed, "Disabled VPN exposes recovery");
+                    Call("OpenSettings"); settings = (Window)Get("settingsWindow");
+                    Find<CheckBox>(settings, "vpnEnabled").IsChecked = true;
+                    Assert(DiscoveryFixture.Reads == 2, "VPN discovery did not run on explicit enable");
+                    Find<CheckBox>(settings, "vpnIndicator").IsChecked = true;
+                    Find<CheckBox>(settings, "11111111-1111-1111-1111-111111111111").IsChecked = true;
+                    Find<CheckBox>(settings, DiscoveryFixture.ProcessPath).IsChecked = true;
+                    Find<Button>(settings, "save").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    saved = NetworkSettings.Load(folder);
+                    Assert(saved.VpnEnabled && saved.ShowVpnIndicator && saved.VpnAdapterIds.Length == 1 &&
+                        saved.VpnProcessPaths[0] == DiscoveryFixture.ProcessPath && !saved.ShowNetwork, "VPN settings UI lost selections/network toggle");
+                    WaitFor(delegate { return !(bool)Get("pending"); }, "VPN monitor did not finish");
+                    Assert(timer.IsEnabled && First.Count == 3 && Second.Count == 3, "VPN-only monitoring sent network probes");
+                    Assert(((PluginWidget[])Call("Snapshot")).Length == 4, "Fourth indicator absent");
+                    foreach (string state in new[] { "TUN: выбран маршрут", "TUN: маршрут не подтверждён", "TUN: несколько адаптеров",
+                        "TUN неактивен", "Состояние TUN неизвестно", "TUN отсутствует", "Ошибка проверки TUN" })
+                    {
+                        tunState = state; Call("RefreshMonitor");
+                        WaitFor(delegate { return !(bool)Get("pending"); }, "VPN state did not finish");
+                        Assert(((PluginWidget[])Call("Snapshot"))[3].Elements[0].Label == state, "VPN state not reflected");
+                    }
+                    Assert(Find<Button>(report, "vpnRecover").Visibility == Visibility.Visible, "Enabled recovery not shown");
+                    tunState = "throw"; Call("RefreshMonitor");
+                    WaitFor(delegate { return !(bool)Get("pending"); }, "VPN error did not finish");
+                    Assert(((PluginWidget[])Call("Snapshot"))[3].Elements[0].Label == "Ошибка проверки TUN", "VPN exception escaped indicator boundary");
+                    tunState = "stale VPN state"; vpnGate = new ManualResetEvent(false);
+                    int beforeReads = vpnReads;
+                    Call("RefreshMonitor");
+                    WaitFor(delegate { return vpnReads > beforeReads; }, "Delayed VPN task did not start");
+                    Call("OpenSettings"); settings = (Window)Get("settingsWindow");
+                    Find<CheckBox>(settings, "vpnIndicator").IsChecked = false;
+                    Find<Button>(settings, "save").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    vpnGate.Set();
+                    WaitFor(delegate { return !(bool)Get("pending"); }, "Stale VPN task did not finish");
+                    vpnGate.Dispose(); vpnGate = null;
+                    Assert(((PluginWidget[])Call("Snapshot")).Length == 3 && !timer.IsEnabled, "Optional indicator did not stop background reads");
+                    Call("OpenSettings"); settings = (Window)Get("settingsWindow");
+                    Find<CheckBox>(settings, "vpnEnabled").IsChecked = false;
+                    Find<Button>(settings, "save").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    saved = NetworkSettings.Load(folder);
+                    int reads = vpnReads;
+                    Call("RefreshMonitor");
+                    Assert(!saved.VpnEnabled && saved.VpnAdapterIds.Length == 1 && saved.VpnProcessPaths.Length == 1 &&
+                        vpnReads == reads && !timer.IsEnabled, "Disabling VPN lost choices or restarted IO");
+                    Console.WriteLine("PASS: disabled VPN has no discovery/IO/actions; VPN settings selection, seven indicator transitions, independent monitoring and full disable");
                 }
                 finally
                 {
@@ -157,6 +229,8 @@ namespace AppShelf.Network
         [IO.File]::ReadAllText((Join-Path $root 'PluginProtocol.cs')),
         [IO.File]::ReadAllText((Join-Path $root 'NetworkChecks.cs')),
         [IO.File]::ReadAllText((Join-Path $root 'PluginTheme.cs')),
+        [IO.File]::ReadAllText((Join-Path $root 'VpnModule.cs')),
+        [IO.File]::ReadAllText((Join-Path $root 'VpnUi.cs')),
         $program, $harness)
     $parameters = New-Object CodeDom.Compiler.CompilerParameters
     $parameters.GenerateInMemory = $true

@@ -6,15 +6,24 @@ $temp = Join-Path ([IO.Path]::GetTempPath()) ('AppShelf-NetworkTests-' + [Guid]:
 [void][IO.Directory]::CreateDirectory($temp)
 try {
     & (Join-Path $root 'Build.ps1') -OutputDirectory $temp
+    & (Join-Path $root 'Build.ps1') -OutputDirectory $temp
+    if (@(Get-ChildItem -LiteralPath $temp -File).Count -ne 1) { throw 'Repeated build left temporary or backup files.' }
+    Write-Host 'PASS: two consecutive builds into the same directory'
     $manifest = Get-Content -LiteralPath (Join-Path $root 'plugin.json') -Raw -Encoding UTF8 | ConvertFrom-Json
     $version = [string]$manifest.version
     $package = Join-Path $temp ('NetworkPlugin-' + $version + '.asplugin')
+    $archive = [IO.Compression.ZipFile]::OpenRead($package)
+    try {
+        $entries = @($archive.Entries | ForEach-Object { $_.FullName } | Sort-Object)
+        if (($entries -join '|') -cne 'bin/LICENSE|bin/NetworkPlugin.exe|bin/NOTICE.md|plugin.json') { throw 'Package must contain one EXE, one manifest and license notices only.' }
+    } finally { $archive.Dispose() }
     [IO.Compression.ZipFile]::ExtractToDirectory($package,(Join-Path $temp 'unpacked'))
     $packagedManifest = Get-Content -LiteralPath (Join-Path $temp 'unpacked\plugin.json') -Raw -Encoding UTF8 | ConvertFrom-Json
     if ($packagedManifest.version -ne $version -or $packagedManifest.update.provider -cne 'github' -or $packagedManifest.update.repository -cne 'mishakov1c/app_shelf_network') { throw 'Packaged version or GitHub update source mismatch.' }
     Write-Host 'PASS: packaged manifest version and GitHub update source'
     $exe = Join-Path $temp 'unpacked\bin\NetworkPlugin.exe'
     $assembly = [Reflection.Assembly]::LoadFrom($exe)
+    if ($assembly.GetName().Version.ToString() -cne ($version + '.0') -or [Diagnostics.FileVersionInfo]::GetVersionInfo($exe).FileVersion -cne ($version + '.0')) { throw 'Executable version mismatch.' }
     $icon = [IO.File]::ReadAllBytes((Join-Path $root 'Assets\NetworkPlugin.ico'))
     $sizes = @(16,20,24,32,48,64,128,256)
     if ($icon.Length -lt 134 -or [BitConverter]::ToUInt16($icon,0) -ne 0 -or [BitConverter]::ToUInt16($icon,2) -ne 1 -or [BitConverter]::ToUInt16($icon,4) -ne 8) { throw 'Invalid ICO directory.' }
