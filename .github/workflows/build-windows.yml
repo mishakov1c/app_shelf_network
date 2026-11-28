@@ -61,6 +61,20 @@ jobs:
           & ./.test-baseline/Build.ps1 -OutputDirectory $baseline
           powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File tests/NetworkUpgrade.Tests.ps1 -HostSourceDirectory "$env:GITHUB_WORKSPACE/.test-host" -BaselinePackage (Join-Path $baseline 'NetworkPlugin-1.0.3.asplugin')
           if ($LASTEXITCODE -ne 0) { throw 'Network upgrade regression failed' }
+      - name: Check out released 1.1.0 preview for upgrade test
+        uses: actions/checkout@v5
+        with:
+          repository: mishakov1c/app_shelf_network
+          ref: 1c7a6a18ee2ee401fd1a6aa51250b17ae0ebda77
+          path: .test-preview
+          persist-credentials: false
+      - name: Test upgrade from actual 1.1.0
+        shell: powershell
+        run: |
+          $baseline = Join-Path $env:RUNNER_TEMP ('NetworkPreview-' + [guid]::NewGuid().ToString('N'))
+          & ./.test-preview/Build.ps1 -OutputDirectory $baseline
+          powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File tests/NetworkUpgrade.Tests.ps1 -HostSourceDirectory "$env:GITHUB_WORKSPACE/.test-host" -BaselinePackage (Join-Path $baseline 'NetworkPlugin-1.1.0.asplugin')
+          if ($LASTEXITCODE -ne 0) { throw 'Network preview upgrade regression failed' }
       - uses: actions/upload-artifact@v6
         with:
           name: NetworkPlugin-${{ github.sha }}

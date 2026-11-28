@@ -1,4 +1,4 @@
-# NetworkPlugin 1.1.0 for AppShelf
+# NetworkPlugin 1.1.1 for AppShelf
 
 Independent Windows WPF network diagnostics plugin for [AppShelf](https://github.com/mishakov1c/app_shelf), plugin API v1.
 Development plan: [ROADMAP.md](ROADMAP.md). Licensing: [NOTICE.md](NOTICE.md), [LICENSE](LICENSE) (GPL-3.0).
@@ -19,7 +19,7 @@ Development plan: [ROADMAP.md](ROADMAP.md). Licensing: [NOTICE.md](NOTICE.md), [
 
 Open the existing settings window and enable **Включить модуль VPN**. Only then are adapters and
 readable running programs enumerated. Select your VPN adapters by their stable Windows IDs and
-programs by full local EXE path, not by name patterns. Refresh the lists to discover newly started programs.
+programs by full local EXE path, not by name patterns. Refresh the lists to discover newly started programs. Version 1.1.1 adds independent, case-insensitive adapter and program search fields, result/selection counts, and a clear button. Program names appear above their full paths. Filtering is local and never clears hidden selections or starts discovery; searches are not persisted.
 Nothing is automatically selected; missing saved entries remain selectable/removable.
 System, host and plugin processes are excluded. Up to 16 adapters and 16 EXE paths may be selected.
 
@@ -82,7 +82,7 @@ Double-click `Build-Plugin.cmd`, or use Windows PowerShell 5.1 / .NET Framework 
 .\Build-Plugin.cmd --no-open --no-pause
 ```
 
-Output: `dist/NetworkPlugin-1.1.0.asplugin`.
+Output: `dist/NetworkPlugin-1.1.1.asplugin`.
 Repeated builds into the same directory atomically replace the package.
 The build does not install/start the plugin, access a user profile, or require AppShelf sources or internet.
 License and provenance notices are included under `bin/` alongside the single EXE.
@@ -133,4 +133,4 @@ drained stderr, not the request payload or local profile.
 Ordinary commits build/test and upload CI artifacts only. The existing stable/preview workflow is retained:
 an explicitly approved `main` commit with exact subject `release: NetworkPlugin X.Y.Z` publishes stable,
 or `release-preview: NetworkPlugin X.Y.Z` publishes a preview, after all checks pass.
-Manifest and executable versions must agree. **Version 1.1.0 is approved for preview publication.** The reviewed integration passed push and PR Windows CI, including the actual 1.0.3 upgrade and recovery checks with test doubles. Real system-changing recovery operations have not been accepted; stable publication requires separate acceptance.
+Manifest and executable versions must agree. **Version 1.1.0 was published as Preview; 1.1.1 adds search and is approved for Preview publication.** The reviewed integration passed push and PR Windows CI, including the actual 1.0.3 upgrade and recovery checks with test doubles. Real system-changing recovery operations have not been accepted; stable publication requires separate acceptance.

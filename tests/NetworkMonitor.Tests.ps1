@@ -39,9 +39,24 @@ namespace AppShelf.Network
     internal sealed class DiscoveryFixture : IVpnSystem
     {
         internal static int Reads;
-        internal static string ProcessPath;
-        public VpnAdapter[] Adapters() { Reads++; return new[] { new VpnAdapter { Id="11111111-1111-1111-1111-111111111111", Name="VPN fixture",Index=10,State=System.Net.NetworkInformation.OperationalStatus.Up } }; }
-        public VpnProcess[] Processes() { Reads++; return new[] { new VpnProcess {Id=111,Path=ProcessPath,Started=123} }; }
+        internal static string ProcessPath, SecondPath;
+        internal static bool ExtraRows, RemoveFirst;
+        public VpnAdapter[] Adapters() {
+            Reads++;
+            var first = new VpnAdapter { Id="11111111-1111-1111-1111-111111111111", Name="VPN fixture",Index=10,State=System.Net.NetworkInformation.OperationalStatus.Up };
+            var second = new VpnAdapter { Id="22222222-2222-2222-2222-222222222222", Name="Other tunnel",Index=11,State=System.Net.NetworkInformation.OperationalStatus.Down };
+            return ExtraRows ? (RemoveFirst ? new[] { second } : new[] { first, second }) : new[] { first };
+        }
+        public VpnProcess[] Processes() {
+            Reads++;
+            var first = new VpnProcess {Id=111,Path=ProcessPath,Started=123};
+            if (!ExtraRows) return new[] { first };
+            var values = new List<VpnProcess>();
+            if (!RemoveFirst) values.Add(first);
+            values.Add(new VpnProcess {Id=222,Path=SecondPath,Started=124});
+            for (int i=0; i<48; i++) values.Add(new VpnProcess {Id=300+i,Path=System.IO.Path.Combine(System.IO.Path.GetDirectoryName(SecondPath),"unrelated"+i+".exe"),Started=125});
+            return values.ToArray();
+        }
         public NetworkProbes.ProxySnapshot Proxy() { throw new Exception("Unexpected proxy read"); }
         public Task StopAsync(VpnProcess p) { throw new Exception("Unsafe test action"); }
         public Task<int> DisableAsync(VpnAdapter a) { throw new Exception("Unsafe test action"); }
@@ -113,6 +128,7 @@ namespace AppShelf.Network
         public static void Run(string folder)
         {
             DiscoveryFixture.ProcessPath = System.IO.Path.Combine(System.IO.Path.GetPathRoot(folder), "SyntheticVpnFixtures", "client.exe");
+            DiscoveryFixture.SecondPath = System.IO.Path.Combine(System.IO.Path.GetPathRoot(folder), "AnotherFixture", "core.exe");
             {
                 Dispatcher dispatcher = Dispatcher.CurrentDispatcher;
                 DispatcherTimer timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(60) };
@@ -213,6 +229,52 @@ namespace AppShelf.Network
                     Assert(!saved.VpnEnabled && saved.VpnAdapterIds.Length == 1 && saved.VpnProcessPaths.Length == 1 &&
                         vpnReads == reads && !timer.IsEnabled, "Disabling VPN lost choices or restarted IO");
                     Console.WriteLine("PASS: disabled VPN has no discovery/IO/actions; VPN settings selection, seven indicator transitions, independent monitoring and full disable");
+
+                    // Exercise actual WPF search fields with a long synthetic process list.
+                    DiscoveryFixture.ExtraRows = true;
+                    Call("OpenSettings"); settings = (Window)Get("settingsWindow");
+                    Find<CheckBox>(settings, "vpnEnabled").IsChecked = true;
+                    var ps = Find<TextBox>(settings, "vpnProcessSearch");
+                    var ads = Find<TextBox>(settings, "vpnAdapterSearch");
+                    string a1 = "11111111-1111-1111-1111-111111111111", a2 = "22222222-2222-2222-2222-222222222222";
+                    int discoveryReads = DiscoveryFixture.Reads;
+                    ps.Text = "ANOTHERFIXTURE";
+                    Assert(Find<CheckBox>(settings, DiscoveryFixture.ProcessPath).Visibility == Visibility.Collapsed &&
+                        Find<CheckBox>(settings, DiscoveryFixture.ProcessPath).IsChecked == true, "Hidden saved program lost");
+                    Assert(Find<CheckBox>(settings, DiscoveryFixture.SecondPath).Visibility == Visibility.Visible, "Path search failed");
+                    ps.Text = "CORE.EXE";
+                    Find<CheckBox>(settings, DiscoveryFixture.SecondPath).IsChecked = true;
+                    Assert(Find<TextBlock>(settings, "vpnProcessCount").Text.Contains("Найдено: 1 из 50") &&
+                        Find<TextBlock>(settings, "vpnProcessCount").Text.Contains("Выбрано: 2"), "Process count incorrect");
+                    ps.Text = "no-such-fixture";
+                    Assert(Find<TextBlock>(settings, "vpnProcessCount").Text.Contains("Нет результатов"), "Missing empty state");
+                    ads.Text = "OTHER TUNNEL";
+                    Assert(Find<CheckBox>(settings, a1).Visibility == Visibility.Collapsed &&
+                        Find<CheckBox>(settings, a2).Visibility == Visibility.Visible, "Adapter name filter failed");
+                    ads.Text = "22222222";
+                    Find<CheckBox>(settings, a2).IsChecked = true;
+                    Assert(DiscoveryFixture.Reads == discoveryReads, "Typing triggered discovery");
+                    Find<Button>(settings, "vpnProcessSearchClear").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    Assert(ps.Text == "" && Find<CheckBox>(settings, DiscoveryFixture.ProcessPath).Visibility == Visibility.Visible &&
+                        Find<CheckBox>(settings, DiscoveryFixture.SecondPath).IsChecked == true, "Clear lost selections");
+                    ps.Text = "CORE.EXE";
+                    DiscoveryFixture.RemoveFirst = true;
+                    Find<Button>(settings, "vpnDiscover").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    Assert(ps.Text == "CORE.EXE" && Find<CheckBox>(settings, DiscoveryFixture.ProcessPath).IsChecked == true &&
+                        Find<CheckBox>(settings, a1).IsChecked == true, "Refresh lost hidden/absent selections");
+                    Find<CheckBox>(settings, "vpnEnabled").IsChecked = false;
+                    Find<CheckBox>(settings, "vpnEnabled").IsChecked = true;
+                    Find<Button>(settings, "save").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    saved = NetworkSettings.Load(folder);
+                    Assert(saved.VpnAdapterIds.Length == 2 && saved.VpnProcessPaths.Length == 2 &&
+                        Array.IndexOf(saved.VpnProcessPaths, DiscoveryFixture.ProcessPath) >= 0 &&
+                        Array.IndexOf(saved.VpnProcessPaths, DiscoveryFixture.SecondPath) >= 0, "Save lost filtered selections");
+                    Call("OpenSettings"); settings = (Window)Get("settingsWindow");
+                    Assert(Find<TextBox>(settings, "vpnProcessSearch").Text == "" &&
+                        Find<TextBox>(settings, "vpnAdapterSearch").Text == "" &&
+                        Find<CheckBox>(settings, DiscoveryFixture.ProcessPath).IsChecked == true &&
+                        Find<CheckBox>(settings, a2).IsChecked == true, "Reopen lost selection or persisted search");
+                    Console.WriteLine("PASS: 50 programs, independent case-insensitive searches, empty state, counts, hidden selection, clear, refresh, toggle, save and reopen");
                 }
                 finally
                 {

@@ -16,6 +16,10 @@ namespace AppShelf.Network
         private readonly StackPanel options = new StackPanel();
         private readonly StackPanel adapters = new StackPanel(), processes = new StackPanel();
         private readonly TextBlock status;
+        private readonly TextBox adapterSearch = new TextBox { Tag = "vpnAdapterSearch" },
+            processSearch = new TextBox { Tag = "vpnProcessSearch" };
+        private readonly TextBlock adapterCount = PluginTheme.Label("", 12, true),
+            processCount = PluginTheme.Label("", 12, true);
         private bool discovered;
         private readonly IVpnSystem discoverySystem;
         private string[] adapterIds, processPaths;
@@ -43,13 +47,14 @@ namespace AppShelf.Network
             options.Children.Add(refresh);
             status = PluginTheme.Label("", 12, true); options.Children.Add(status);
             options.Children.Add(PluginTheme.Label("Адаптеры VPN — только явно выбранные идентификаторы", 13));
-            options.Children.Add(adapters);
+            AddSearch(options, adapterSearch, adapterCount, adapters, "Поиск адаптеров", "vpnAdapterCount");
             options.Children.Add(PluginTheme.Label("Программы VPN — точный путь EXE, не маска имени", 13));
-            options.Children.Add(processes);
+            AddSearch(options, processSearch, processCount, processes, "Поиск программ", "vpnProcessCount");
             options.Children.Add(PluginTheme.Label("Выберите только свои VPN-объекты. Отключение физического адаптера прервёт сеть. " +
                 "Недоступные для чтения и системные процессы не предлагаются. Каждый шаг восстановления подтверждается отдельно.", 12, true));
-            Populate(adapters, adapterIds, adapterIds);
-            Populate(processes, processPaths, processPaths);
+            Populate(adapters, adapterIds, adapterIds, false);
+            Populate(processes, processPaths, processPaths, true);
+            RefreshFilters();
             options.IsEnabled = settings.VpnEnabled;
             enabled.Checked += delegate { options.IsEnabled = true; if (!discovered) Discover(); };
             enabled.Unchecked += delegate { options.IsEnabled = false; };
@@ -62,16 +67,78 @@ namespace AppShelf.Network
             foreach (CheckBox item in list.Children) if (item.IsChecked == true) values.Add((string)item.Tag);
             return values.ToArray();
         }
-        private static void Populate(StackPanel list, string[] values, string[] selected)
+        private void AddSearch(StackPanel parent, TextBox search, TextBlock count, StackPanel list, string title, string countTag)
+        {
+            TextBlock label = PluginTheme.Label(title, 12, true);
+            label.Margin = new Thickness(0, 8, 0, 4);
+            parent.Children.Add(label);
+            DockPanel row = new DockPanel { LastChildFill = true };
+            Button clear = PluginTheme.Button("Очистить");
+            clear.Margin = new Thickness(8, 0, 0, 0);
+            clear.Tag = (string)search.Tag + "Clear";
+            DockPanel.SetDock(clear, Dock.Right);
+            row.Children.Add(clear);
+            search.MinHeight = 32;
+            System.Windows.Automation.AutomationProperties.SetName(search, title);
+            row.Children.Add(search);
+            parent.Children.Add(row);
+            count.Tag = countTag;
+            count.Margin = new Thickness(0, 5, 0, 5);
+            parent.Children.Add(count);
+            parent.Children.Add(list);
+            search.TextChanged += delegate { RefreshFilters(); };
+            clear.Click += delegate { search.Clear(); search.Focus(); };
+        }
+
+        // Keep every checkbox in the logical list, even when hidden by a filter.
+        // Checked() therefore includes hidden choices on save and discovery refresh.
+        private void Populate(StackPanel list, string[] values, string[] selected, bool programs)
         {
             list.Children.Clear();
             foreach (string value in values)
             {
-                CheckBox box = new CheckBox { Content = new TextBlock { Text = value, TextWrapping = TextWrapping.Wrap },
-                    Tag = value, IsChecked = VpnModule.Selected(selected, value), Margin = new Thickness(0, 5, 0, 5) };
+                FrameworkElement content;
+                if (programs)
+                {
+                    StackPanel details = new StackPanel();
+                    TextBlock name = PluginTheme.Label(System.IO.Path.GetFileName(value), 13);
+                    name.FontWeight = FontWeights.SemiBold;
+                    details.Children.Add(name);
+                    details.Children.Add(PluginTheme.Label(value, 11, true));
+                    content = details;
+                }
+                else content = PluginTheme.Label(value, 12);
+                CheckBox box = new CheckBox { Content = content, Tag = value,
+                    IsChecked = VpnModule.Selected(selected, value), Margin = new Thickness(0, 5, 0, 5) };
+                box.Checked += delegate { RefreshFilters(); };
+                box.Unchecked += delegate { RefreshFilters(); };
                 list.Children.Add(box);
             }
         }
+
+        private static void Filter(StackPanel list, string query, TextBlock count)
+        {
+            int found = 0, selected = 0;
+            query = (query ?? "").Trim();
+            foreach (CheckBox box in list.Children)
+            {
+                string label = box.Content is TextBlock ? ((TextBlock)box.Content).Text : "";
+                bool match = ((string)box.Tag).IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    label.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0;
+                box.Visibility = match ? Visibility.Visible : Visibility.Collapsed;
+                if (match) found++;
+                if (box.IsChecked == true) selected++;
+            }
+            count.Text = "Найдено: " + found + " из " + list.Children.Count + " · Выбрано: " + selected +
+                (found == 0 ? " · Нет результатов" : "");
+        }
+
+        private void RefreshFilters()
+        {
+            Filter(adapters, adapterSearch.Text, adapterCount);
+            Filter(processes, processSearch.Text, processCount);
+        }
+
         private void Discover()
         {
             if (enabled.IsChecked != true) return;
@@ -85,7 +152,7 @@ namespace AppShelf.Network
                 List<string> paths = new List<string>(processPaths);
                 foreach (VpnProcess process in detectedProcesses) if (!VpnModule.Selected(paths.ToArray(), process.Path)) paths.Add(process.Path);
                 ids.Sort(StringComparer.OrdinalIgnoreCase); paths.Sort(StringComparer.OrdinalIgnoreCase);
-                Populate(adapters, ids.ToArray(), adapterIds); Populate(processes, paths.ToArray(), processPaths);
+                Populate(adapters, ids.ToArray(), adapterIds, false); Populate(processes, paths.ToArray(), processPaths, true);
                 foreach (CheckBox box in adapters.Children)
                 {
                     VpnAdapter match = Array.Find(detectedAdapters, delegate(VpnAdapter a) { return String.Equals(a.Id, (string)box.Tag, StringComparison.OrdinalIgnoreCase); });
@@ -93,7 +160,8 @@ namespace AppShelf.Network
                 }
                 foreach (CheckBox box in processes.Children)
                     if (!Array.Exists(detectedProcesses, delegate(VpnProcess p) { return String.Equals(p.Path, (string)box.Tag, StringComparison.OrdinalIgnoreCase); }))
-                        ((TextBlock)box.Content).Text += " · не запущена / недоступна";
+                        ((StackPanel)box.Content).Children.Add(PluginTheme.Label("Не запущена / недоступна", 11, true));
+                RefreshFilters();
                 status.Text = "Обнаружено адаптеров: " + detectedAdapters.Length + ". Доступных процессов: " + detectedProcesses.Length +
                     ". Ничего не выбирается автоматически.";
                 discovered = true;

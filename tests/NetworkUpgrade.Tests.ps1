@@ -26,7 +26,7 @@ public static class NetworkUpgradeTests {
   const string id="appshelf.network";
   var store=new PluginPackageStore(Path.Combine(folder,"profile"));
   var old=store.Install(oldPackage,delegate{return true;});
-  Assert(old.Id==id&&old.Version=="1.0.3","Not an actual 1.0.3 baseline");
+  Assert(old.Id==id&&(old.Version=="1.0.3"||old.Version=="1.1.0"),"Unexpected baseline");
   Assert(old.Update!=null&&old.Update.Repository=="mishakov1c/app_shelf_network","Old update source");
   string data=store.GetDataDirectory(id);Directory.CreateDirectory(data);
   string file=Path.Combine(data,"network-settings.json");
@@ -35,16 +35,16 @@ public static class NetworkUpgradeTests {
   string backup=Path.Combine(folder,"backups");
   using(var runtime=new PluginRuntime(store,5000)) {
    runtime.SetEnabledAsync(id,true).GetAwaiter().GetResult();
-   var first=runtime.ReadWidgetSnapshotAsync(id,"1.0.3",true).GetAwaiter().GetResult();
+   var first=runtime.ReadWidgetSnapshotAsync(id,old.Version,true).GetAwaiter().GetResult();
    Assert(first.Widgets.Length==3&&first.ProcessId>0,"Old runtime failed");
    bool failed=false;
    try {store.Install(nextPackage,delegate{return true;},id,runtime.BeforePackageCommit,backup,true,new string('0',64));}catch(InvalidDataException){failed=true;}
-   Assert(failed&&store.ReadInstalled(id).Version=="1.0.3","Bad hash accepted");
-   Assert(runtime.ReadWidgetSnapshotAsync(id,"1.0.3",false).GetAwaiter().GetResult().ProcessId==first.ProcessId,"Rejected update stopped process");
+   Assert(failed&&store.ReadInstalled(id).Version==old.Version,"Bad hash accepted");
+   Assert(runtime.ReadWidgetSnapshotAsync(id,old.Version,false).GetAwaiter().GetResult().ProcessId==first.ProcessId,"Rejected update stopped process");
    Assert(store.Install(nextPackage,delegate{return false;},id,runtime.BeforePackageCommit,backup,true)==null,"Decline ignored");
-   Assert(runtime.ReadWidgetSnapshotAsync(id,"1.0.3",false).GetAwaiter().GetResult().ProcessId==first.ProcessId,"Declined update stopped process");
+   Assert(runtime.ReadWidgetSnapshotAsync(id,old.Version,false).GetAwaiter().GetResult().ProcessId==first.ProcessId,"Declined update stopped process");
    var next=store.Install(nextPackage,delegate{return true;},id,runtime.BeforePackageCommit,backup,true,Hash(nextPackage));
-   Assert(next.Version=="1.1.0"&&next.Id==old.Id&&next.EntryPoint==old.EntryPoint,"Update identity changed");
+   Assert(next.Version=="1.1.1"&&next.Id==old.Id&&next.EntryPoint==old.EntryPoint,"Update identity changed");
    Assert(next.Update!=null&&next.Update.Provider==old.Update.Provider&&next.Update.Repository==old.Update.Repository,"Update source changed");
    Assert(next.BackupFiles.Length==1&&next.BackupFiles[0]=="network-settings.json","Backup allowlist changed");
    Exited(first.ProcessId);
@@ -53,7 +53,7 @@ public static class NetworkUpgradeTests {
    string[] archives=Directory.GetFiles(Path.Combine(backup,"BeforePluginUpdate"),"*.asplugin");
    Assert(archives.Length==1,"Previous package backup missing");
    runtime.SetEnabledAsync(id,true).GetAwaiter().GetResult();
-   var current=runtime.ReadWidgetSnapshotAsync(id,"1.1.0",true).GetAwaiter().GetResult();
+   var current=runtime.ReadWidgetSnapshotAsync(id,"1.1.1",true).GetAwaiter().GetResult();
    Assert(current.Widgets.Length==3,"VPN enabled during migration");
    foreach(var widget in current.Widgets) Assert(widget.Elements[0].Label=="Выключено","Disabled network regression");
    Assert(current.ProcessId!=first.ProcessId,"Old process reused");
@@ -63,11 +63,11 @@ public static class NetworkUpgradeTests {
     string selected="{\"showNetwork\":false,\"networkCheck1Mode\":\"tcp\",\"networkCheck1Target\":\"localhost:443\",\"vpnEnabled\":true,\"showVpnIndicator\":true,\"vpnAdapterIds\":[\"11111111-1111-1111-1111-111111111111\"],\"vpnProcessPaths\":[\""+fixturePath.Replace("\\","\\\\")+"\"]}";
    File.WriteAllText(file,selected);
    runtime.SetEnabledAsync(id,true).GetAwaiter().GetResult();
-   current=runtime.ReadWidgetSnapshotAsync(id,"1.1.0",true).GetAwaiter().GetResult();
+   current=runtime.ReadWidgetSnapshotAsync(id,"1.1.1",true).GetAwaiter().GetResult();
    Assert(current.Widgets.Length==4&&Array.Exists(current.Widgets,delegate(PluginWidget w){return w.Id=="tun"&&w.Elements[1].CommandId=="open";}),"Fourth indicator missing");
    int pid=current.ProcessId;
    for(int i=0;i<30;i++) {
-    current=runtime.ReadWidgetSnapshotAsync(id,"1.1.0",false).GetAwaiter().GetResult();
+    current=runtime.ReadWidgetSnapshotAsync(id,"1.1.1",false).GetAwaiter().GetResult();
     var tun=Array.Find(current.Widgets,delegate(PluginWidget w){return w.Id=="tun";});
     if(tun.Elements[0].Label=="TUN отсутствует")break;
     Thread.Sleep(100);
@@ -76,7 +76,7 @@ public static class NetworkUpgradeTests {
    runtime.SetEnabledAsync(id,false).GetAwaiter().GetResult();
    store.SetBackupDataEnabled(id,true);byte[] bytes=store.CaptureBackup();File.WriteAllBytes(store.RecoveredPath(),bytes);
    File.WriteAllText(file,original);
-   runtime.RestoreDataAsync(id,"1.1.0",Path.Combine(folder,"safety")).GetAwaiter().GetResult();
+   runtime.RestoreDataAsync(id,"1.1.1",Path.Combine(folder,"safety")).GetAwaiter().GetResult();
    Assert(File.ReadAllText(file)==selected&&!store.List()[0].Enabled,"VPN selections not restored safely");
    // The archived previous EXE can still read additive settings in a separate rollback store.
    var rollback=new PluginPackageStore(Path.Combine(folder,"rollback"));rollback.Install(archives[0],delegate{return true;});
@@ -84,12 +84,12 @@ public static class NetworkUpgradeTests {
    File.WriteAllText(Path.Combine(previousData,"network-settings.json"),selected);
    using(var previous=new PluginRuntime(rollback,5000)) {
     previous.SetEnabledAsync(id,true).GetAwaiter().GetResult();
-    var restored=previous.ReadWidgetSnapshotAsync(id,"1.0.3",true).GetAwaiter().GetResult();
-    Assert(restored.Widgets.Length==3,"Archived version cannot read additive settings");
+    var restored=previous.ReadWidgetSnapshotAsync(id,old.Version,true).GetAwaiter().GetResult();
+    Assert(restored.Widgets.Length==(old.Version=="1.0.3"?3:4),"Archived version cannot read additive settings");
    }
    Assert(File.ReadAllText(Path.Combine(previousData,"network-settings.json"))==selected,"Old version rewrote new settings");
   }
-  Console.WriteLine("PASS: actual 1.0.3 -> 1.1.0 update, declined/bad-hash rejection, old process stop, unchanged data/source, VPN-off regression, fourth indicator, backup/restore and archived 1.0.3 rollback.");
+  Console.WriteLine("PASS: actual baseline -> 1.1.1 update, declined/bad-hash rejection, old process stop, unchanged data/source, VPN-off regression, fourth indicator, backup/restore and archived 1.0.3 rollback.");
  }
 }
 '@
@@ -105,6 +105,6 @@ try {
         [IO.File]::ReadAllText((Join-Path $HostSourceDirectory 'PluginRuntime.cs')), $harness)
     $compiled = $provider.CompileAssemblyFromSource($parameters,[string[]]$sources)
     if ($compiled.Errors.Count) { throw ($compiled.Errors | Out-String) }
-    $compiled.CompiledAssembly.GetType('NetworkUpgradeTests').GetMethod('Run').Invoke($null,[object[]]@([string]$temp,[IO.Path]::GetFullPath($BaselinePackage),[string](Join-Path $temp 'NetworkPlugin-1.1.0.asplugin')))
+    $compiled.CompiledAssembly.GetType('NetworkUpgradeTests').GetMethod('Run').Invoke($null,[object[]]@([string]$temp,[IO.Path]::GetFullPath($BaselinePackage),[string](Join-Path $temp 'NetworkPlugin-1.1.1.asplugin')))
     Write-Host ('Evidence profile: ' + $temp)
 } finally { $provider.Dispose() }
