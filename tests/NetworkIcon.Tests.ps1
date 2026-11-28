@@ -247,6 +247,10 @@ try {
             [NetworkIconNative]::Window($handle,$OutputDirectory,($name+'-'+$size[0]+'x'+$size[1]))
         }
         if ($name -eq 'settings') {
+            # At 1100x780 and 100% DPI the whole form can fit legitimately.
+            # Require actual overflow in the compact viewport before testing scrolling.
+            $transform.Resize(520,400)
+            Start-Sleep -Milliseconds 200
             $scrollers = $window.FindAll([Windows.Automation.TreeScope]::Descendants,
                 (New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::IsScrollPatternAvailableProperty,$true)))
             $scrolled = $false
