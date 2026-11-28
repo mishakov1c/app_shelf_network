@@ -133,4 +133,4 @@ drained stderr, not the request payload or local profile.
 Ordinary commits build/test and upload CI artifacts only. The existing stable/preview workflow is retained:
 an explicitly approved `main` commit with exact subject `release: NetworkPlugin X.Y.Z` publishes stable,
 or `release-preview: NetworkPlugin X.Y.Z` publishes a preview, after all checks pass.
-Manifest and executable versions must agree. **Version 1.1.0 is a review candidate; no 1.1.0 tag or release has been published.**
+Manifest and executable versions must agree. **Version 1.1.0 is approved for preview publication.** The reviewed integration passed push and PR Windows CI, including the actual 1.0.3 upgrade and recovery checks with test doubles. Real system-changing recovery operations have not been accepted; stable publication requires separate acceptance.
