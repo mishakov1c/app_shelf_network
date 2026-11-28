@@ -23,6 +23,18 @@ jobs:
         run: |
           powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File tests/NetworkMonitor.Tests.ps1
           if ($LASTEXITCODE -ne 0) { throw 'Network monitor regression failed' }
+      - name: Test VPN guards without system changes
+        shell: powershell
+        run: |
+          powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File tests/VpnModule.Tests.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'VPN safety regression failed' }
+      - name: Test packaged icon and actual WPF windows
+        shell: powershell
+        run: |
+          powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File tests/NetworkIcon.Tests.ps1 -Utf8ParentInput
+          if ($LASTEXITCODE -ne 0) { throw 'Network icon regression failed' }
+          powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File tests/NetworkIcon.Tests.ps1 -VpnEnabled -Utf8ParentInput
+          if ($LASTEXITCODE -ne 0) { throw 'VPN actual-window regression failed' }
       - name: Check out pinned host runtime for compatibility test
         uses: actions/checkout@v5
         with:
@@ -35,6 +47,20 @@ jobs:
         run: |
           powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File tests/NetworkRuntime.Tests.ps1 -HostSourceDirectory "$env:GITHUB_WORKSPACE/.test-host"
           if ($LASTEXITCODE -ne 0) { throw 'Network runtime compatibility failed' }
+      - name: Check out accepted baseline for upgrade test
+        uses: actions/checkout@v5
+        with:
+          repository: mishakov1c/app_shelf_network
+          ref: de1c7b16f20933de0ed19a2aa1c4e71d3b054d2b
+          path: .test-baseline
+          persist-credentials: false
+      - name: Test upgrade from actual 1.0.3
+        shell: powershell
+        run: |
+          $baseline = Join-Path $env:RUNNER_TEMP ('NetworkBaseline-' + [guid]::NewGuid().ToString('N'))
+          & ./.test-baseline/Build.ps1 -OutputDirectory $baseline
+          powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File tests/NetworkUpgrade.Tests.ps1 -HostSourceDirectory "$env:GITHUB_WORKSPACE/.test-host" -BaselinePackage (Join-Path $baseline 'NetworkPlugin-1.0.3.asplugin')
+          if ($LASTEXITCODE -ne 0) { throw 'Network upgrade regression failed' }
       - uses: actions/upload-artifact@v6
         with:
           name: NetworkPlugin-${{ github.sha }}

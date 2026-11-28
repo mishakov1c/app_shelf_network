@@ -6,6 +6,7 @@ $version = [string]$manifest.version
 if ($version -notmatch '^(0|[1-9]\d{0,4})\.(0|[1-9]\d{0,4})\.(0|[1-9]\d{0,4})$') { throw 'Invalid plugin manifest version.' }
 $source = [IO.File]::ReadAllText((Join-Path $root 'NetworkPlugin.cs'))
 if (-not $source.Contains('private const string Version = "' + $version + '";')) { throw 'Plugin manifest and executable version differ.' }
+if (-not $source.Contains('AssemblyFileVersion("' + $version + '.0")') -or -not $source.Contains('AssemblyVersion("' + $version + '.0")')) { throw 'Windows executable version differs from manifest.' }
 $framework = Join-Path $env:SystemRoot 'Microsoft.NET\Framework64\v4.0.30319'
 if (-not (Test-Path (Join-Path $framework 'csc.exe'))) {
     $framework = Join-Path $env:SystemRoot 'Microsoft.NET\Framework\v4.0.30319'
@@ -20,7 +21,7 @@ try {
     $exe = Join-Path $stage 'bin\NetworkPlugin.exe'
     $icon = Join-Path $root 'Assets\NetworkPlugin.ico'
     if (-not (Test-Path -LiteralPath $icon)) { throw 'NetworkPlugin icon is missing.' }
-    & $csc /nologo /codepage:65001 /target:winexe /platform:anycpu /optimize+ "/out:$exe" "/win32icon:$icon" "/resource:$icon,AppShelf.Network.Icon.ico" /reference:System.dll /reference:System.Core.dll /reference:System.Xml.dll /reference:System.Runtime.Serialization.dll "/reference:$framework\WPF\WindowsBase.dll" "/reference:$framework\WPF\PresentationCore.dll" "/reference:$framework\WPF\PresentationFramework.dll" /reference:System.Xaml.dll (Join-Path $root 'PluginProtocol.cs') (Join-Path $PSScriptRoot 'NetworkPlugin.cs') (Join-Path $PSScriptRoot 'NetworkChecks.cs') (Join-Path $PSScriptRoot 'PluginTheme.cs')
+    & $csc /nologo /codepage:65001 /target:winexe /platform:anycpu /optimize+ "/out:$exe" "/win32icon:$icon" "/resource:$icon,AppShelf.Network.Icon.ico" /reference:System.dll /reference:System.Core.dll /reference:System.Xml.dll /reference:System.Runtime.Serialization.dll "/reference:$framework\WPF\WindowsBase.dll" "/reference:$framework\WPF\PresentationCore.dll" "/reference:$framework\WPF\PresentationFramework.dll" /reference:System.Xaml.dll (Join-Path $root 'PluginProtocol.cs') (Join-Path $PSScriptRoot 'NetworkPlugin.cs') (Join-Path $PSScriptRoot 'NetworkChecks.cs') (Join-Path $PSScriptRoot 'PluginTheme.cs') (Join-Path $root 'VpnModule.cs') (Join-Path $root 'VpnUi.cs')
     if ($LASTEXITCODE -ne 0) { throw 'Network plugin compilation failed.' }
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'plugin.json') -Destination $stage
     $output = [IO.Path]::GetFullPath($OutputDirectory)
@@ -32,8 +33,16 @@ try {
         try {
             [void][IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, (Join-Path $stage 'plugin.json'), 'plugin.json')
             [void][IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, $exe, 'bin/NetworkPlugin.exe')
+            [void][IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, (Join-Path $root 'LICENSE'), 'bin/LICENSE')
+            [void][IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, (Join-Path $root 'NOTICE.md'), 'bin/NOTICE.md')
         } finally { $archive.Dispose() }
-        if ([IO.File]::Exists($package)) { [IO.File]::Replace($temporary, $package, $null) }
+        if ([IO.File]::Exists($package)) {
+            # PowerShell 5.1 binds $null to an empty string for this overload.
+            # A real backup path preserves atomic replacement without that ambiguity.
+            $previous = $temporary + '.previous'
+            [IO.File]::Replace($temporary, $package, $previous)
+            [IO.File]::Delete($previous)
+        }
         else { [IO.File]::Move($temporary, $package) }
     } finally {
         if ([IO.File]::Exists($temporary)) { [IO.File]::Delete($temporary) }

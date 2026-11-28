@@ -1,5 +1,7 @@
 dist/
 .test-host/
+.test-baseline/
+INTEGRATION-REPORT.md
 *.exe
 *.pdb
 *.tmp

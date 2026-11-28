@@ -126,11 +126,11 @@ namespace AppShelf {
         private static Style CheckBoxStyle(bool readableDisabled = false)
         {
             ControlTemplate template = new ControlTemplate(typeof(CheckBox));
-            FrameworkElementFactory line = new FrameworkElementFactory(typeof(StackPanel));
-            line.SetValue(StackPanel.OrientationProperty, Orientation.Horizontal);
+            FrameworkElementFactory line = new FrameworkElementFactory(typeof(DockPanel));
             line.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
             FrameworkElementFactory frame = new FrameworkElementFactory(typeof(Border));
             frame.Name = "CheckFrame";
+            frame.SetValue(DockPanel.DockProperty, Dock.Left);
             frame.SetValue(FrameworkElement.WidthProperty, 18.0);
             frame.SetValue(FrameworkElement.HeightProperty, 18.0);
             frame.SetValue(Border.CornerRadiusProperty, new CornerRadius(5));
