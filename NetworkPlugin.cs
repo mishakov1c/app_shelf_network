@@ -87,7 +87,13 @@ namespace AppShelf.Network
                 }
             }
             catch (EndOfStreamException) { }
-            catch (Exception) { exitCode = 1; }
+            catch (Exception ex)
+            {
+                exitCode = 1;
+                // Diagnostics belong on stderr, never in the framed stdout stream.
+                try { Console.Error.WriteLine("NetworkPlugin IPC terminated: " + ex.GetType().Name + ": " + ex.Message); }
+                catch (IOException) { }
+            }
             finally
             {
                 try { dispatcher.BeginInvoke(new Action(delegate { Application.Current.Shutdown(); })); }

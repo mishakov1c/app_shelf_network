@@ -31,15 +31,15 @@ jobs:
       - name: Test packaged icon and actual WPF windows
         shell: powershell
         run: |
-          powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File tests/NetworkIcon.Tests.ps1
+          powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File tests/NetworkIcon.Tests.ps1 -Utf8ParentInput
           if ($LASTEXITCODE -ne 0) { throw 'Network icon regression failed' }
-          powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File tests/NetworkIcon.Tests.ps1 -VpnEnabled
+          powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File tests/NetworkIcon.Tests.ps1 -VpnEnabled -Utf8ParentInput
           if ($LASTEXITCODE -ne 0) { throw 'VPN actual-window regression failed' }
       - name: Check out pinned host runtime for compatibility test
         uses: actions/checkout@v5
         with:
           repository: mishakov1c/app_shelf
-          ref: 6148a7c09c2b54d8b736bb0b36f3aeef3e6c4b12
+          ref: c8edc77b5a9706e9b2f7a35a0c9a9deb2b4e3c46
           path: .test-host
           persist-credentials: false
       - name: Test actual installed plugin through host API

@@ -108,6 +108,7 @@ Run using Windows PowerShell 5.1 `-NoProfile -STA -ExecutionPolicy Bypass -File`
 | `NetworkUpgrade.Tests.ps1 -HostSourceDirectory .test-host -BaselinePackage dist/NetworkPlugin-1.0.3.asplugin` | Actual local upgrade, rejected hash/decline, previous package archive, VPN off/on, settings backup and archived rollback |
 | `NetworkIcon.Tests.ps1` | Built EXE, Windows Shell, singleton windows, icons, report sections and layout at three sizes |
 | `NetworkIcon.Tests.ps1 -VpnEnabled` | Same real EXE checks with VPN on and UI Automation decline of recovery |
+| `NetworkIcon.Tests.ps1 -Utf8ParentInput` (also with `-VpnEnabled`) | All icon/window checks with a BOM-emitting UTF-8 parent, reproducing the Windows CI encoding boundary |
 
 Tests isolate profiles and never approve real recovery. Network probes in actual-window tests are
 limited to `127.0.0.1:9`; recovery/connectivity tests use in-memory substitutes.
@@ -118,7 +119,14 @@ do not publish them. Optional `-CaptureDesktop` captures other desktop windows a
 use it only during an interactive acceptance session.
 
 CI pins the host revision for compatibility and the accepted 1.0.3 baseline for upgrade tests.
+The host pin is the exact AppShelf 2.24.3 release commit `c8edc77b5a9706e9b2f7a35a0c9a9deb2b4e3c46`.
 No AppShelf core modification is needed. Local tests do not constitute CI or real destructive-operation acceptance.
+
+The real-process test launches .NET Framework's redirected stdin with BOM-less UTF-8 and
+immediately restores the parent console encoding. Otherwise `Process.Start` can emit an encoding
+preamble before the first binary frame when the parent uses UTF-8 with BOM. Frame validation is
+unchanged. IPC failures include the request method/ID, process exit status and asynchronously
+drained stderr, not the request payload or local profile.
 
 ## Publication
 

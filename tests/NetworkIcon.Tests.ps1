@@ -3,7 +3,8 @@
 param(
     [string]$OutputDirectory = (Join-Path $env:LOCALAPPDATA ('Temp\opencode\NetworkIcon-' + [guid]::NewGuid().ToString('N'))),
     [switch]$CaptureDesktop,
-    [switch]$VpnEnabled
+    [switch]$VpnEnabled,
+    [switch]$Utf8ParentInput
 )
 $ErrorActionPreference = 'Stop'
 if ($PSVersionTable.PSEdition -eq 'Core' -or [Threading.Thread]::CurrentThread.ApartmentState -ne 'STA') { throw 'Use Windows PowerShell 5.1 -STA.' }
@@ -147,13 +148,23 @@ $p.StartInfo.CreateNoWindow = $true
 $p.StartInfo.RedirectStandardInput = $true
 $p.StartInfo.RedirectStandardOutput = $true
 $p.StartInfo.RedirectStandardError = $true
+$stderrTask = $null
+$currentRequest = 'not sent'
+$originalInputEncoding = [Console]::InputEncoding
+$started = $false
+function Ipc-Failure([string]$Reason) {
+    $exited = $p.WaitForExit(1000)
+    $state = if ($exited) { 'exit code ' + $p.ExitCode } else { 'still running' }
+    $stderr = if ($null -ne $stderrTask -and $exited -and $stderrTask.Wait(1000)) { $stderrTask.Result } else { '<not yet complete>' }
+    throw ($Reason + ' Request: ' + $script:currentRequest + '; process: ' + $state + '; stderr: ' + $stderr)
+}
 function Read-Exact([IO.Stream]$Stream,[int]$Count) {
     $buffer = New-Object byte[] $Count
     $offset = 0
     while ($offset -lt $Count) {
         $task = $Stream.ReadAsync($buffer,$offset,$Count-$offset)
-        if (-not $task.Wait(10000)) { throw 'IPC timed out.' }
-        if ($task.Result -le 0) { throw 'IPC stream closed.' }
+        if (-not $task.Wait(10000)) { Ipc-Failure 'IPC timed out.' }
+        if ($task.Result -le 0) { Ipc-Failure 'IPC stream closed.' }
         $offset += $task.Result
     }
     return ,$buffer
@@ -163,18 +174,38 @@ function Exchange([hashtable]$Request) {
     $script:requestId++
     $Request.apiVersion = 1
     $Request.id = $script:requestId
+    $script:currentRequest = [string]$Request.method + ' #' + $Request.id
     $payload = [Text.Encoding]::UTF8.GetBytes(($Request | ConvertTo-Json -Compress))
     $send = $p.StandardInput.BaseStream
     $header = [BitConverter]::GetBytes([int]$payload.Length)
-    $send.Write($header,0,4); $send.Write($payload,0,$payload.Length); $send.Flush()
+    try { $send.Write($header,0,4); $send.Write($payload,0,$payload.Length); $send.Flush() }
+    catch { Ipc-Failure ('IPC write failed: ' + $_.Exception.Message) }
     $receive = $p.StandardOutput.BaseStream
     $length = [BitConverter]::ToInt32((Read-Exact $receive 4),0)
     if ($length -lt 1 -or $length -gt 65536) { throw 'Invalid IPC frame.' }
     $reply = [Text.Encoding]::UTF8.GetString((Read-Exact $receive $length)) | ConvertFrom-Json
-    if (-not $reply.ok -or $reply.id -ne $Request.id) { throw 'Plugin request failed.' }
+    if (-not $reply.ok -or $reply.id -ne $Request.id) { Ipc-Failure ('Plugin request failed: ' + $reply.error) }
 }
 try {
-    [void]$p.Start()
+    # Reproduce the GitHub Windows runner's BOM-emitting parent encoding on any workstation.
+    if ($Utf8ParentInput) { [Console]::InputEncoding = New-Object Text.UTF8Encoding($true) }
+    $parentInputEncoding = [Console]::InputEncoding
+    # Framework Process.Start creates an AutoFlush StreamWriter using Console.InputEncoding.
+    # A BOM-emitting UTF-8 parent inserts EF-BB-BF BEFORE any BaseStream frame writes.
+    # Start with BOM-less UTF-8, then immediately restore the parent. Do not relax framing.
+    try {
+        [Console]::InputEncoding = New-Object Text.UTF8Encoding($false)
+        $started = $p.Start()
+    } finally { [Console]::InputEncoding = $parentInputEncoding }
+    if (-not $started) { throw 'Plugin process did not start.' }
+    $stderrTask = $p.StandardError.ReadToEndAsync()
+    if ($p.StandardInput.Encoding.GetPreamble().Length -ne 0) { throw 'Binary IPC writer can emit an encoding preamble.' }
+    if ([Console]::InputEncoding.CodePage -ne $parentInputEncoding.CodePage -or
+        [BitConverter]::ToString([Console]::InputEncoding.GetPreamble()) -cne [BitConverter]::ToString($parentInputEncoding.GetPreamble())) {
+        throw 'Parent console input encoding was not restored.'
+    }
+    Write-Host ('PASS: BOM-free binary IPC writer; parent input code page ' + $parentInputEncoding.CodePage +
+        ', preamble bytes ' + $parentInputEncoding.GetPreamble().Length + ', restored after launch.')
     Exchange @{method='hello';pluginId='appshelf.network';pluginVersion=[string]$manifest.version;locale='ru-RU';dataDirectory=$data}
     Exchange @{method='invoke';commandId='open'}
     Exchange @{method='settings'}
@@ -317,7 +348,8 @@ public static class InvokeRecoveryForDecline {
     Exchange @{method='shutdown'}
     if (-not $p.WaitForExit(5000) -or $p.ExitCode -ne 0) { throw 'Plugin did not shut down cleanly.' }
 } finally {
-    if (-not $p.HasExited) { $p.Kill(); [void]$p.WaitForExit(5000) }
+    if ($started -and -not $p.HasExited) { $p.Kill(); [void]$p.WaitForExit(5000) }
     $p.Dispose()
+    [Console]::InputEncoding = $originalInputEncoding
 }
 Write-Host ('Evidence: ' + $OutputDirectory)
